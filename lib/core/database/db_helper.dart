@@ -1,6 +1,7 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/expense_model.dart';
+import '../models/hotel_model.dart';
 import '../models/trip_model.dart';
 import '../models/user_model.dart';
 import 'hotel_seed_data.dart';
@@ -150,18 +151,21 @@ class DBHelper {
   }
 
   static Future<void> _seedHotels(Database db) async {
-    // Jangan seed dua kali kalau tabel sudah ada isinya
+    // Cek apakah tabel kosong atau belum memiliki seluruh data hotel dari seed
     final count = Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM hotels'),
         ) ??
         0;
-    if (count > 0) return;
-
-    final batch = db.batch();
-    for (final h in hotelSeedData) {
-      batch.insert('hotels', h);
+    if (count < hotelSeedData.length) {
+      if (count > 0) {
+        await db.delete('hotels');
+      }
+      final batch = db.batch();
+      for (final h in hotelSeedData) {
+        batch.insert('hotels', h);
+      }
+      await batch.commit(noResult: true);
     }
-    await batch.commit(noResult: true);
   }
 
   // --- USER AUTH OPERATIONS ---
@@ -253,7 +257,28 @@ class DBHelper {
   // --- HOTEL OPERATIONS ---
   static Future<List<Map<String, dynamic>>> getHotels() async {
     final db = await database;
-    return await db.query('hotels');
+    var res = await db.query('hotels');
+    if (res.length < hotelSeedData.length) {
+      await _seedHotels(db);
+      res = await db.query('hotels');
+    }
+    return res;
+  }
+
+  static Future<List<HotelModel>> getHotelModels() async {
+    final raw = await getHotels();
+    return raw.map((m) => HotelModel.fromMap(m)).toList();
+  }
+
+  static Future<List<HotelModel>> searchHotels(String keyword) async {
+    final db = await database;
+    final term = '%$keyword%';
+    final res = await db.query(
+      'hotels',
+      where: 'name LIKE ? OR city LIKE ? OR province LIKE ? OR address LIKE ?',
+      whereArgs: [term, term, term, term],
+    );
+    return res.map((m) => HotelModel.fromMap(m)).toList();
   }
 
   // --- FEEDBACK (SARAN & KESAN) ---

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'core/database/database_initializer.dart';
 import 'core/theme/app_colors.dart';
 import 'screens/splash/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // WAJIB untuk Windows/Linux/macOS: aktifkan SQLite FFI sebelum DB dipakai
+  initializeDatabase();
 
   // Configure status bar and navigation bar styling
   SystemChrome.setSystemUIOverlayStyle(

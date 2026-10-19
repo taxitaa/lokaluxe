@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/expense_model.dart';
 import '../models/trip_model.dart';
 import '../models/user_model.dart';
+import 'hotel_seed_data.dart';
 
 class DBHelper {
   static Database? _database;
@@ -19,7 +20,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: (db, version) async {
         // 1. Table Users
         await db.execute('''
@@ -74,20 +75,7 @@ class DBHelper {
         ''');
 
         // 5. Table Hotels (Database Hotel Se-Indonesia)
-        await db.execute('''
-          CREATE TABLE hotels (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            province TEXT NOT NULL,
-            city TEXT NOT NULL,
-            stars INTEGER,
-            price_per_night REAL NOT NULL,
-            latitude REAL,
-            longitude REAL,
-            address TEXT,
-            image_url TEXT
-          )
-        ''');
+        await _createHotelsTable(db);
 
         // Seed Default User (Amalia Nur Azizah)
         await db.insert('users', {
@@ -129,20 +117,51 @@ class DBHelper {
           'isIncome': 0,
         });
 
-        // Seed Contoh Data Hotel
-        await db.insert('hotels', {
-          'name': 'Adimulia Hotel Medan',
-          'province': 'Sumatera Utara',
-          'city': 'Medan',
-          'stars': 4,
-          'price_per_night': 1100000.0,
-          'latitude': 3.5852,
-          'longitude': 98.6721,
-          'address': 'Jl. Pangeran Diponegoro No.21',
-          'image_url': 'https://images.unsplash.com/photo-1566073771259-6a8506099945'
-        });
+        // Seed data hotel
+        await _seedHotels(db);
+      },
+      // Dipanggil kalau database lama dibuka dengan version yang lebih baru
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 3) {
+          // Buang tabel hotel lama (kalau ada), buat ulang, isi 46 hotel
+          await db.execute('DROP TABLE IF EXISTS hotels');
+          await _createHotelsTable(db);
+          await _seedHotels(db);
+        }
       },
     );
+  }
+
+  static Future<void> _createHotelsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS hotels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        province TEXT NOT NULL,
+        city TEXT NOT NULL,
+        stars INTEGER,
+        price_per_night REAL NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        address TEXT,
+        image_url TEXT
+      )
+    ''');
+  }
+
+  static Future<void> _seedHotels(Database db) async {
+    // Jangan seed dua kali kalau tabel sudah ada isinya
+    final count = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM hotels'),
+        ) ??
+        0;
+    if (count > 0) return;
+
+    final batch = db.batch();
+    for (final h in hotelSeedData) {
+      batch.insert('hotels', h);
+    }
+    await batch.commit(noResult: true);
   }
 
   // --- USER AUTH OPERATIONS ---

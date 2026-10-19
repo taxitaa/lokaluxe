@@ -17,6 +17,17 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
     _hotelList = DBHelper.getHotels(); // Mengambil data hotel dari SQLite
   }
 
+  String _rupiah(dynamic value) {
+    final n = (value as num?)?.round() ?? 0;
+    final str = n.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) buf.write('.');
+      buf.write(str[i]);
+    }
+    return 'Rp $buf';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -35,6 +46,17 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Color(0xFF1B4332)));
+          } else if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Gagal memuat data hotel:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('Belum ada data hotel tersimpan di database.'));
           }
@@ -53,7 +75,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05), 
+                      color: Colors.black.withValues(alpha: 0.05), 
                       blurRadius: 8, 
                       offset: const Offset(0, 4),
                     ),
@@ -66,7 +88,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                       child: Image.network(
-                        hotel['image_url'],
+                        (hotel['image_url'] ?? '') as String,
                         height: 180,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -113,7 +135,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Rp ${hotel['price_per_night']} / malam',
+                                '${_rupiah(hotel['price_per_night'])} / malam',
                                 style: const TextStyle(
                                   fontSize: 15, 
                                   fontWeight: FontWeight.bold, 

@@ -1,30 +1,51 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lokaluxe/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('LokaLuxe splash to login and main navigation test', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(const LokaLuxeApp());
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // 1. Verify Splash Screen elements from reference screenshot 1
+    expect(find.text('Start Exploring\nthe World'), findsOneWidget);
+    expect(find.text('Mulai Eksplorasi'), findsOneWidget);
+    expect(find.text('Google'), findsOneWidget);
+    expect(find.text('Apple'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // 2. Tap "Mulai Eksplorasi" -> Navigates to Login Screen
+    await tester.tap(find.text('Mulai Eksplorasi'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LOCALLUXE APP'), findsOneWidget);
+    expect(find.text('Masuk ke LocalLuxe'), findsOneWidget);
+    expect(find.text('Masuk'), findsOneWidget);
+
+    // 3. Tap "Masuk" -> Navigates to Main Navigation (Beranda)
+    await tester.tap(find.text('Masuk'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hello, Amalia! 👋'), findsOneWidget);
+    expect(find.text('Kategori Pilihan'), findsOneWidget);
+    expect(find.text('Explore'), findsOneWidget);
+    expect(find.text('Navigator'), findsOneWidget);
+    expect(find.text('Concierge'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
+
+    // 4. Test Bottom Navigation tab switching
+    await tester.tap(find.text('Navigator'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mulai Navigasi Rute'), findsOneWidget);
+
+    await tester.tap(find.text('Concierge'));
+    await tester.pumpAndSettle();
+    expect(find.text('AI Concierge'), findsOneWidget);
+
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Amalia Nur Azizah'), findsOneWidget);
+    expect(find.text('Kirim Saran & Kesan'), findsOneWidget);
   });
 }

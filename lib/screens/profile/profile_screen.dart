@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/models/user_model.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/preferences_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../auth/login_screen.dart';
 import '../splash/splash_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -14,6 +17,22 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _userRating = 5;
   final TextEditingController _feedbackController = TextEditingController();
+  UserModel? _currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = await AuthService.checkSession();
+    if (user != null && mounted) {
+      setState(() {
+        _currentUser = user;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -38,6 +57,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final displayName = _currentUser?.fullName.isNotEmpty == true
+        ? _currentUser!.fullName
+        : 'Amalia Nur Azizah';
+    final displayEmail = _currentUser?.email.isNotEmpty == true
+        ? _currentUser!.email
+        : 'amalia.azizah@travel.id';
+    final initials = displayName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
+
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       body: SafeArea(
@@ -76,11 +103,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       alignment: Alignment.center,
-                      child: const Text(
-                        'AMALIA',
-                        style: TextStyle(
+                      child: Text(
+                        initials.isNotEmpty ? initials : 'LX',
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -92,12 +119,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                'Amalia Nur Azizah',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textDark,
+                              Expanded(
+                                child: Text(
+                                  displayName,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textDark,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               const SizedBox(width: 4),
@@ -110,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'amalia.azizah@travel.id',
+                            displayEmail,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 11,
                               color: AppColors.textSecondary,
@@ -127,7 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '✦ LocalLuxe Gold Member',
+                              '✦ LocalLuxe Member',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -349,10 +379,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextButton(
-                      onPressed: () {
+                      onPressed: () async {
+                        // Logout: Menghapus token sesi secara aman dan kembali ke Login
+                        await AuthService.logout();
+                        if (!context.mounted) return;
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(
-                            builder: (context) => const SplashScreen(),
+                            builder: (context) => const LoginScreen(),
                           ),
                           (route) => false,
                         );

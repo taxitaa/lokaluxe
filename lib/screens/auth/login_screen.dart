@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/main_navigation_screen.dart';
 import 'register_screen.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,12 +27,152 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => const MainNavigationScreen(),
-      ),
+  bool _isLoading = false;
+  bool _isBiometricLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastEmail();
+  }
+
+  Future<void> _loadLastEmail() async {
+    final lastEmail = await SessionService.getLastLoggedInEmail();
+    if (lastEmail != null && lastEmail.isNotEmpty && mounted) {
+      setState(() {
+        _emailController.text = lastEmail;
+      });
+    }
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email dan kata sandi wajib diisi'),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await AuthService.login(
+      email: email,
+      password: password,
     );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  result.message,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.primaryGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const MainNavigationScreen(),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  result.message,
+                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleBiometricLogin() async {
+    setState(() => _isBiometricLoading = true);
+
+    final result = await AuthService.loginWithBiometrics();
+
+    if (!mounted) return;
+    setState(() => _isBiometricLoading = false);
+
+    if (result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.fingerprint_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  result.message,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.primaryGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const MainNavigationScreen(),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  result.message,
+                  style: GoogleFonts.plusJakartaSans(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.textDark,
+        ),
+      );
+    }
   }
 
   @override
@@ -340,24 +482,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(26),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Masuk',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.2,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Masuk',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 18,
+                              color: AppColors.pureWhite,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 18,
-                        color: AppColors.pureWhite,
-                      ),
-                    ],
-                  ),
                 ),
               ),
 
@@ -399,7 +550,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    onTap: _handleLogin,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Fitur masuk dengan akun Google segera hadir'),
+                          backgroundColor: AppColors.primaryGreen,
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(width: 16),
                   _buildQuickLoginButton(
@@ -408,16 +566,32 @@ class _LoginScreenState extends State<LoginScreen> {
                       size: 22,
                       color: AppColors.textDark,
                     ),
-                    onTap: _handleLogin,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Fitur masuk dengan Apple ID segera hadir'),
+                          backgroundColor: AppColors.primaryGreen,
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(width: 16),
                   _buildQuickLoginButton(
-                    child: const Icon(
-                      Icons.fingerprint_rounded,
-                      size: 22,
-                      color: AppColors.primaryGreen,
-                    ),
-                    onTap: _handleLogin,
+                    child: _isBiometricLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primaryGreen,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.fingerprint_rounded,
+                            size: 22,
+                            color: AppColors.primaryGreen,
+                          ),
+                    onTap: _handleBiometricLogin,
                   ),
                 ],
               ),

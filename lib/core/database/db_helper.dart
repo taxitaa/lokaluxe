@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'database_initializer.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
@@ -7,6 +8,7 @@ import '../models/hotel_model.dart';
 import '../models/transport_model.dart';
 import '../models/trip_model.dart';
 import '../models/user_model.dart';
+import '../security/password_hasher.dart';
 import 'hotel_seed_data.dart';
 import 'transport_seed_data.dart';
 
@@ -20,23 +22,23 @@ class DBHelper {
   }
 
   static Future<Database> _initDB() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'lokaluxe_local.db');
+    initializeDatabase();
+
+    final String path;
+    if (kIsWeb) {
+      path = 'lokaluxe_local.db';
+    } else {
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, 'lokaluxe_local.db');
+    }
 
     final db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
-        // 1. Table Users
-        await db.execute('''
-          CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fullName TEXT,
-            email TEXT UNIQUE,
-            password TEXT,
-            currency TEXT
-          )
-        ''');
+        // 1. Table Users dengan Enkripsi PBKDF2 / SHA-256 & Salt
+        await _createUsersTable(db);
+        await _seedDefaultUser(db);
 
         // 2. Table Trips (Budget Planner)
         await db.execute('''
@@ -82,14 +84,6 @@ class DBHelper {
         // 5. Table Hotels (Database Hotel Se-Indonesia)
         await _createHotelsTable(db);
 
-        // Seed Default User (Amalia Nur Azizah)
-        await db.insert('users', {
-          'fullName': 'Amalia Nur Azizah',
-          'email': 'amalia@localluxe.id',
-          'password': 'password123',
-          'currency': 'IDR (Rupiah Indonesia)',
-        });
-
         // Seed Default Trip (Yogyakarta)
         await db.insert('trips', {
           'destination': 'Yogyakarta',
@@ -125,16 +119,54 @@ class DBHelper {
         // Seed data hotel
         await _seedHotels(db);
       },
-      // Dipanggil kalau database lama dibuka dengan version yang lebih baru
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 3) {
-          // Buang tabel hotel lama (kalau ada), buat ulang, isi 46 hotel
           await db.execute('DROP TABLE IF EXISTS hotels');
           await _createHotelsTable(db);
           await _seedHotels(db);
         }
+        if (oldVersion < 4) {
+          // Migrasi tabel users untuk enkripsi salt & passwordHash
+          try {
+            final tableInfo = await db.rawQuery('PRAGMA table_info(users)');
+            final hasSalt = tableInfo.any((c) => c['name'] == 'salt');
+            if (!hasSalt) {
+              await db.execute('ALTER TABLE users ADD COLUMN salt TEXT');
+              await db.execute('ALTER TABLE users ADD COLUMN passwordHash TEXT');
+              await db.execute('ALTER TABLE users ADD COLUMN createdAt TEXT');
+            }
+
+            // Migrasi akun lama yang masih memakai kolom password plaintext
+            final legacyUsers = await db.query('users');
+            for (final u in legacyUsers) {
+              final rawHash = u['passwordHash'] as String?;
+              if (rawHash == null || rawHash.isEmpty) {
+                final plain = (u['password'] ?? 'password123').toString();
+                final salt = PasswordHasher.generateSalt();
+                final hash = PasswordHasher.hashPassword(plain, salt);
+                await db.update(
+                  'users',
+                  {
+                    'passwordHash': hash,
+                    'salt': salt,
+                    'createdAt': DateTime.now().toIso8601String(),
+                  },
+                  where: 'id = ?',
+                  whereArgs: [u['id']],
+                );
+              }
+            }
+          } catch (_) {
+            await _createUsersTable(db);
+            await _seedDefaultUser(db);
+          }
+        }
       },
     );
+
+    // Pastikan tabel users terbuat dan memiliki data seed
+    await _createUsersTable(db);
+    await _seedDefaultUser(db);
 
     // Isi tabel wisata dari file assets/db/lokaluxe_wisata.sqlite (hanya sekali)
     await _importWisataIfEmpty(db);
@@ -142,6 +174,43 @@ class DBHelper {
     // Buat & isi tabel transportasi (hanya sekali)
     await _ensureTransports(db);
     return db;
+  }
+
+  // --- TABEL USERS & SEED ---
+  static Future<void> _createUsersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fullName TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        passwordHash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        currency TEXT,
+        createdAt TEXT
+      )
+    ''');
+  }
+
+  static Future<void> _seedDefaultUser(Database db) async {
+    final count = Sqflite.firstIntValue(
+          await db.rawQuery(
+            "SELECT COUNT(*) FROM users WHERE LOWER(email) = 'amalia@localluxe.id'",
+          ),
+        ) ??
+        0;
+
+    if (count == 0) {
+      final salt = PasswordHasher.generateSalt();
+      final hash = PasswordHasher.hashPassword('password123', salt);
+      await db.insert('users', {
+        'fullName': 'Amalia Nur Azizah',
+        'email': 'amalia@localluxe.id',
+        'passwordHash': hash,
+        'salt': salt,
+        'currency': 'IDR (Rupiah Indonesia)',
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    }
   }
 
   static Future<void> _importWisataIfEmpty(Database db) async {
@@ -183,13 +252,17 @@ class DBHelper {
       return;
     }
 
-    // 1. Salin file sqlite dari assets ke folder sementara
+    // 1. Salin file sqlite dari assets ke penyimpanan database
     final bytes = await rootBundle.load('assets/db/lokaluxe_wisata.sqlite');
-    final tmpPath = join(await getDatabasesPath(), 'wisata_source.db');
-    await File(tmpPath).writeAsBytes(
-      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      flush: true,
-    );
+    final uint8List = bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+    final String tmpPath;
+    if (kIsWeb) {
+      tmpPath = 'wisata_source.db';
+    } else {
+      final dbPath = await getDatabasesPath();
+      tmpPath = join(dbPath, 'wisata_source.db');
+    }
+    await databaseFactory.writeDatabaseBytes(tmpPath, uint8List);
 
     // 2. Baca semua baris, lalu masukkan ke database utama
     final src = await openDatabase(tmpPath, readOnly: true);
@@ -209,24 +282,20 @@ class DBHelper {
         'nama_lengkap': r['nama_lengkap'],
         'deskripsi': r['deskripsi'],
         'image_url': r['image_url'],
-        'harga_tiket': r['harga_tiket'], // null kalau belum ada, diisi _isiHargaWisata
+        'harga_tiket': r['harga_tiket'],
       });
     }
     await batch.commit(noResult: true);
 
-    // 3. Hapus file sementara
+    // 3. Hapus database sementara
     try {
-      await File(tmpPath).delete();
+      await databaseFactory.deleteDatabase(tmpPath);
     } catch (_) {}
 
     // 4. Isi estimasi harga tiket
     await _isiHargaWisata(db);
   }
 
-  // Estimasi biaya per orang (Rupiah) berdasarkan kategori: tiket masuk,
-  // atau perkiraan parkir/donasi/makan untuk tempat tanpa tiket.
-  // Ini ESTIMASI, bukan harga resmi tiap tempat.
-  // Ubah angka di bawah kalau mau menyesuaikan.
   static Future<void> _isiHargaWisata(Database db) async {
     await db.execute('''
       UPDATE wisata SET harga_tiket = CASE LOWER(REPLACE(TRIM(kategori), '  ', ' '))
@@ -276,7 +345,6 @@ class DBHelper {
   }
 
   static Future<void> _seedHotels(Database db) async {
-    // Jangan seed dua kali kalau tabel sudah ada isinya
     final count = Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM hotels'),
         ) ??
@@ -324,7 +392,6 @@ class DBHelper {
     await batch.commit(noResult: true);
   }
 
-  // Ambil data transportasi (filter jenis / provinsi bersifat opsional)
   static Future<List<Map<String, dynamic>>> getTransports({
     String? type,
     String? province,
@@ -353,22 +420,46 @@ class DBHelper {
     return maps.map((m) => TransportModel.fromMap(m)).toList();
   }
 
-  // --- USER AUTH OPERATIONS ---
+  // --- USER AUTH OPERATIONS (SQLITE + PBKDF2/SHA-256) ---
+
+  /// Mendaftarkan user baru dengan password yang sudah di-hash beserta salt unik
   static Future<int> registerUser(UserModel user) async {
     final db = await database;
     try {
       return await db.insert('users', user.toMap());
     } catch (e) {
-      return -1; 
+      return -1; // -1 jika email sudah terdaftar (UNIQUE constraint)
     }
   }
 
-  static Future<UserModel?> loginUser(String email, String password) async {
+  /// Memvalidasi kredensial login dengan membandingkan hash password input + salt
+  static Future<UserModel?> loginUser(
+    String email,
+    String plainPassword,
+  ) async {
+    final user = await getUserByEmail(email);
+    if (user == null) return null;
+
+    final isValid = PasswordHasher.verifyPassword(
+      plainPassword,
+      user.passwordHash,
+      user.salt,
+    );
+
+    if (isValid) {
+      return user;
+    }
+    return null;
+  }
+
+  /// Mengambil data user berdasarkan email
+  static Future<UserModel?> getUserByEmail(String email) async {
     final db = await database;
     final res = await db.query(
       'users',
-      where: 'email = ? AND password = ?',
-      whereArgs: [email, password],
+      where: 'LOWER(email) = ?',
+      whereArgs: [email.trim().toLowerCase()],
+      limit: 1,
     );
     if (res.isNotEmpty) {
       return UserModel.fromMap(res.first);
@@ -376,12 +467,14 @@ class DBHelper {
     return null;
   }
 
-  static Future<UserModel?> getUserByEmail(String email) async {
+  /// Mengambil data user berdasarkan ID
+  static Future<UserModel?> getUserById(int id) async {
     final db = await database;
     final res = await db.query(
       'users',
-      where: 'email = ?',
-      whereArgs: [email],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
     );
     if (res.isNotEmpty) {
       return UserModel.fromMap(res.first);
@@ -392,7 +485,8 @@ class DBHelper {
   // --- TRIP & BUDGET OPERATIONS ---
   static Future<int> saveTrip(TripModel trip) async {
     final db = await database;
-    await db.update('trips', {'status': 'archived'}, where: 'status = ?', whereArgs: ['active']);
+    await db.update('trips', {'status': 'archived'},
+        where: 'status = ?', whereArgs: ['active']);
     return await db.insert('trips', trip.toMap());
   }
 
@@ -425,7 +519,8 @@ class DBHelper {
 
   static Future<double> getTotalExpenses() async {
     final db = await database;
-    final res = await db.rawQuery('SELECT SUM(amount) as total FROM expenses WHERE isIncome = 0');
+    final res = await db.rawQuery(
+        'SELECT SUM(amount) as total FROM expenses WHERE isIncome = 0');
     if (res.isNotEmpty && res.first['total'] != null) {
       return (res.first['total'] as num).toDouble();
     }
@@ -439,8 +534,7 @@ class DBHelper {
     return target - spent;
   }
 
-  // --- HOTEL OPERATIONS ---
-  // Ambil data wisata. Filter provinsi/kategori/pencarian bersifat opsional.
+  // --- HOTEL & WISATA OPERATIONS ---
   static Future<List<Map<String, dynamic>>> getWisata({
     String? provinsi,
     String? kategori,
@@ -481,7 +575,8 @@ class DBHelper {
   }
 
   // --- FEEDBACK (SARAN & KESAN) ---
-  static Future<int> insertFeedback(String userEmail, int rating, String comment) async {
+  static Future<int> insertFeedback(
+      String userEmail, int rating, String comment) async {
     final db = await database;
     return await db.insert('feedback', {
       'userEmail': userEmail,

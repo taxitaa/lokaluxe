@@ -1,12 +1,50 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
 import '../home/main_navigation_screen.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  Timer? _sessionTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionTimer = Timer(const Duration(milliseconds: 800), () {
+      _checkActiveSession();
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkActiveSession() async {
+    if (!mounted) return;
+    final user = await AuthService.checkSession();
+    if (!mounted) return;
+
+    if (user != null) {
+      // Sesi aktif & valid: langsung arahkan ke Beranda
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const MainNavigationScreen(),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,6 +184,7 @@ class SplashScreen extends StatelessWidget {
                 height: 52,
                 child: ElevatedButton(
                   onPressed: () {
+                    _sessionTimer?.cancel();
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const LoginScreen(),
@@ -215,9 +254,9 @@ class SplashScreen extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
-                        Navigator.of(context).pushReplacement(
+                        Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (context) => const MainNavigationScreen(),
+                            builder: (context) => const LoginScreen(),
                           ),
                         );
                       },
@@ -272,9 +311,9 @@ class SplashScreen extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
-                        Navigator.of(context).pushReplacement(
+                        Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (context) => const MainNavigationScreen(),
+                            builder: (context) => const LoginScreen(),
                           ),
                         );
                       },

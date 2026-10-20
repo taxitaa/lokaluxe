@@ -8,6 +8,8 @@ import '../game/mini_game_screen.dart';
 import '../itinerary/itinerary_screen.dart';
 import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
+import '../wisata/wisata_catalog_screen.dart';
+import '../transportasi/transport_catalog_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
   final Function(int) onTabChange;
@@ -329,8 +331,12 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       onTap: () {
                         setState(() => _selectedCategoryIndex = index);
                         if (index == 0) {
-                          _open(const HotelCatalogScreen());
-                        }
+                        _open(const HotelCatalogScreen());
+                      } else if (index == 1) {
+                        _open(const TransportCatalogScreen());
+                      } else if (index == 2) {
+                        _open(const WisataCatalogScreen());
+                      }
                       },
                       borderRadius: BorderRadius.circular(99),
                       child: Container(

@@ -1,10 +1,14 @@
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/expense_model.dart';
 import '../models/hotel_model.dart';
+import '../models/transport_model.dart';
 import '../models/trip_model.dart';
 import '../models/user_model.dart';
 import 'hotel_seed_data.dart';
+import 'transport_seed_data.dart';
 
 class DBHelper {
   static Database? _database;
@@ -19,7 +23,7 @@ class DBHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'lokaluxe_local.db');
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
       version: 3,
       onCreate: (db, version) async {
@@ -131,6 +135,127 @@ class DBHelper {
         }
       },
     );
+
+    // Isi tabel wisata dari file assets/db/lokaluxe_wisata.sqlite (hanya sekali)
+    await _importWisataIfEmpty(db);
+
+    // Buat & isi tabel transportasi (hanya sekali)
+    await _ensureTransports(db);
+    return db;
+  }
+
+  static Future<void> _importWisataIfEmpty(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS wisata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kategori TEXT NOT NULL,
+        nama_wisata TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        alamat TEXT,
+        provinsi TEXT,
+        kota_kabupaten TEXT,
+        nama_lengkap TEXT,
+        deskripsi TEXT,
+        image_url TEXT,
+        harga_tiket REAL
+      )
+    ''');
+
+    // Database lama (sebelum ada harga): tambahkan kolom harga_tiket
+    final kolom = await db.rawQuery('PRAGMA table_info(wisata)');
+    final adaHarga = kolom.any((c) => c['name'] == 'harga_tiket');
+    if (!adaHarga) {
+      await db.execute('ALTER TABLE wisata ADD COLUMN harga_tiket REAL');
+    }
+
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_wisata_provinsi ON wisata(provinsi)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_wisata_kategori ON wisata(kategori)');
+
+    final count = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM wisata'),
+        ) ??
+        0;
+    if (count > 0) {
+      await _isiHargaWisata(db); // isi harga untuk data yang belum punya
+      return;
+    }
+
+    // 1. Salin file sqlite dari assets ke folder sementara
+    final bytes = await rootBundle.load('assets/db/lokaluxe_wisata.sqlite');
+    final tmpPath = join(await getDatabasesPath(), 'wisata_source.db');
+    await File(tmpPath).writeAsBytes(
+      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+      flush: true,
+    );
+
+    // 2. Baca semua baris, lalu masukkan ke database utama
+    final src = await openDatabase(tmpPath, readOnly: true);
+    final rows = await src.query('wisata');
+    await src.close();
+
+    final batch = db.batch();
+    for (final r in rows) {
+      batch.insert('wisata', {
+        'kategori': r['kategori'],
+        'nama_wisata': r['nama_wisata'],
+        'latitude': r['latitude'],
+        'longitude': r['longitude'],
+        'alamat': r['alamat'],
+        'provinsi': r['provinsi'],
+        'kota_kabupaten': r['kota_kabupaten'],
+        'nama_lengkap': r['nama_lengkap'],
+        'deskripsi': r['deskripsi'],
+        'image_url': r['image_url'],
+        'harga_tiket': r['harga_tiket'], // null kalau belum ada, diisi _isiHargaWisata
+      });
+    }
+    await batch.commit(noResult: true);
+
+    // 3. Hapus file sementara
+    try {
+      await File(tmpPath).delete();
+    } catch (_) {}
+
+    // 4. Isi estimasi harga tiket
+    await _isiHargaWisata(db);
+  }
+
+  // Estimasi biaya per orang (Rupiah) berdasarkan kategori: tiket masuk,
+  // atau perkiraan parkir/donasi/makan untuk tempat tanpa tiket.
+  // Ini ESTIMASI, bukan harga resmi tiap tempat.
+  // Ubah angka di bawah kalau mau menyesuaikan.
+  static Future<void> _isiHargaWisata(Database db) async {
+    await db.execute('''
+      UPDATE wisata SET harga_tiket = CASE LOWER(REPLACE(TRIM(kategori), '  ', ' '))
+        WHEN 'pantai' THEN 10000
+        WHEN 'gunung' THEN 20000
+        WHEN 'air terjun' THEN 15000
+        WHEN 'bukit' THEN 10000
+        WHEN 'lembah' THEN 15000
+        WHEN 'candi' THEN 50000
+        WHEN 'museum' THEN 15000
+        WHEN 'kebun binatang' THEN 60000
+        WHEN 'wahana keluarga' THEN 100000
+        WHEN 'wisata tematik' THEN 75000
+        WHEN 'wisata edukasi' THEN 25000
+        WHEN 'wisata kerajaan' THEN 20000
+        WHEN 'rumah adat' THEN 10000
+        WHEN 'monumen' THEN 10000
+        WHEN 'taman' THEN 5000
+        WHEN 'wisata alam' THEN 15000
+        WHEN 'wisata lampion' THEN 30000
+        WHEN 'wisata religi' THEN 5000
+        WHEN 'wisata kuliner' THEN 50000
+        WHEN 'alun-alun' THEN 5000
+        WHEN 'mall' THEN 20000
+        WHEN 'cafe view' THEN 50000
+        ELSE 10000
+      END
+      WHERE harga_tiket IS NULL OR harga_tiket = 0
+    ''');
   }
 
   static Future<void> _createHotelsTable(Database db) async {
@@ -151,21 +276,81 @@ class DBHelper {
   }
 
   static Future<void> _seedHotels(Database db) async {
-    // Cek apakah tabel kosong atau belum memiliki seluruh data hotel dari seed
+    // Jangan seed dua kali kalau tabel sudah ada isinya
     final count = Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM hotels'),
         ) ??
         0;
-    if (count < hotelSeedData.length) {
-      if (count > 0) {
-        await db.delete('hotels');
-      }
-      final batch = db.batch();
-      for (final h in hotelSeedData) {
-        batch.insert('hotels', h);
-      }
-      await batch.commit(noResult: true);
+    if (count > 0) return;
+
+    final batch = db.batch();
+    for (final h in hotelSeedData) {
+      batch.insert('hotels', h);
     }
+    await batch.commit(noResult: true);
+  }
+
+  // ---------- TRANSPORTASI ----------
+  static Future<void> _ensureTransports(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        category TEXT,
+        operator_name TEXT,
+        province TEXT NOT NULL,
+        route TEXT,
+        price REAL NOT NULL,
+        description TEXT,
+        image_url TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transports_type ON transports(type)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transports_province ON transports(province)');
+
+    final count = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM transports'),
+        ) ??
+        0;
+    if (count > 0) return;
+
+    final batch = db.batch();
+    for (final t in transportSeedData) {
+      batch.insert('transports', t);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  // Ambil data transportasi (filter jenis / provinsi bersifat opsional)
+  static Future<List<Map<String, dynamic>>> getTransports({
+    String? type,
+    String? province,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (type != null) {
+      where.add('type = ?');
+      args.add(type);
+    }
+    if (province != null) {
+      where.add('province = ?');
+      args.add(province);
+    }
+    return db.query(
+      'transports',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'type ASC, price ASC',
+    );
+  }
+
+  static Future<List<TransportModel>> getTransportModels() async {
+    final maps = await getTransports();
+    return maps.map((m) => TransportModel.fromMap(m)).toList();
   }
 
   // --- USER AUTH OPERATIONS ---
@@ -255,30 +440,44 @@ class DBHelper {
   }
 
   // --- HOTEL OPERATIONS ---
+  // Ambil data wisata. Filter provinsi/kategori/pencarian bersifat opsional.
+  static Future<List<Map<String, dynamic>>> getWisata({
+    String? provinsi,
+    String? kategori,
+    String? cari,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (provinsi != null) {
+      where.add('provinsi = ?');
+      args.add(provinsi);
+    }
+    if (kategori != null) {
+      where.add('kategori = ?');
+      args.add(kategori);
+    }
+    if (cari != null && cari.trim().isNotEmpty) {
+      where.add('nama_wisata LIKE ?');
+      args.add('%${cari.trim()}%');
+    }
+    return db.query(
+      'wisata',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'nama_wisata ASC',
+    );
+  }
+
   static Future<List<Map<String, dynamic>>> getHotels() async {
     final db = await database;
-    var res = await db.query('hotels');
-    if (res.length < hotelSeedData.length) {
-      await _seedHotels(db);
-      res = await db.query('hotels');
-    }
-    return res;
+    return await db.query('hotels');
   }
 
   static Future<List<HotelModel>> getHotelModels() async {
-    final raw = await getHotels();
-    return raw.map((m) => HotelModel.fromMap(m)).toList();
-  }
-
-  static Future<List<HotelModel>> searchHotels(String keyword) async {
     final db = await database;
-    final term = '%$keyword%';
-    final res = await db.query(
-      'hotels',
-      where: 'name LIKE ? OR city LIKE ? OR province LIKE ? OR address LIKE ?',
-      whereArgs: [term, term, term, term],
-    );
-    return res.map((m) => HotelModel.fromMap(m)).toList();
+    final maps = await db.query('hotels');
+    return maps.map((m) => HotelModel.fromMap(m)).toList();
   }
 
   // --- FEEDBACK (SARAN & KESAN) ---

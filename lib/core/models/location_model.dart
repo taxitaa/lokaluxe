@@ -1,8 +1,8 @@
-/// Model yang merepresentasikan satu lokasi yang bisa dipilih pengguna.
+/// A location the user can select as their current region.
 ///
 /// Setiap lokasi memiliki relasi dengan:
 /// - Mata uang otomatis (misal Indonesia → IDR, Jepang → JPY)
-/// - Zona waktu otomatis (misal Tokyo → Asia/Tokyo UTC+9)
+/// - Automatic time zone (for example, Tokyo → JST UTC+9)
 /// - Kategori konversi untuk fallback (IDR/EUR/JPY vs "OTHER")
 class LocationModel {
   final String id;           // ID unik, misal: "id-jakarta"
@@ -49,7 +49,7 @@ class LocationModel {
   String toString() => displayName;
 }
 
-/// Database lokasi yang tersedia untuk dipilih pengguna.
+/// Locations available in the location picker.
 ///
 /// Mencakup kota-kota utama dari:
 /// - Indonesia (IDR, WIB/WITA/WIT)
@@ -131,7 +131,7 @@ class LocationDatabase {
     LocationModel(
       id: 'jp-tokyo',
       city: 'Tokyo',
-      country: 'Jepang',
+      country: 'Japan',
       countryCode: 'JP',
       flag: '🇯🇵',
       currency: 'JPY',
@@ -142,7 +142,7 @@ class LocationDatabase {
     LocationModel(
       id: 'jp-osaka',
       city: 'Osaka',
-      country: 'Jepang',
+      country: 'Japan',
       countryCode: 'JP',
       flag: '🇯🇵',
       currency: 'JPY',
@@ -153,7 +153,7 @@ class LocationDatabase {
     LocationModel(
       id: 'jp-kyoto',
       city: 'Kyoto',
-      country: 'Jepang',
+      country: 'Japan',
       countryCode: 'JP',
       flag: '🇯🇵',
       currency: 'JPY',
@@ -166,7 +166,7 @@ class LocationDatabase {
     LocationModel(
       id: 'fr-paris',
       city: 'Paris',
-      country: 'Prancis',
+      country: 'France',
       countryCode: 'FR',
       flag: '🇫🇷',
       currency: 'EUR',
@@ -177,7 +177,7 @@ class LocationDatabase {
     LocationModel(
       id: 'de-berlin',
       city: 'Berlin',
-      country: 'Jerman',
+      country: 'Germany',
       countryCode: 'DE',
       flag: '🇩🇪',
       currency: 'EUR',
@@ -187,8 +187,8 @@ class LocationDatabase {
     ),
     LocationModel(
       id: 'it-rome',
-      city: 'Roma',
-      country: 'Italia',
+      city: 'Rome',
+      country: 'Italy',
       countryCode: 'IT',
       flag: '🇮🇹',
       currency: 'EUR',
@@ -199,7 +199,7 @@ class LocationDatabase {
     LocationModel(
       id: 'es-madrid',
       city: 'Madrid',
-      country: 'Spanyol',
+      country: 'Spain',
       countryCode: 'ES',
       flag: '🇪🇸',
       currency: 'EUR',
@@ -210,7 +210,7 @@ class LocationDatabase {
     LocationModel(
       id: 'nl-amsterdam',
       city: 'Amsterdam',
-      country: 'Belanda',
+      country: 'Netherlands',
       countryCode: 'NL',
       flag: '🇳🇱',
       currency: 'EUR',
@@ -220,8 +220,8 @@ class LocationDatabase {
     ),
     LocationModel(
       id: 'gr-athens',
-      city: 'Athena',
-      country: 'Yunani',
+      city: 'Athens',
+      country: 'Greece',
       countryCode: 'GR',
       flag: '🇬🇷',
       currency: 'EUR',
@@ -234,11 +234,11 @@ class LocationDatabase {
     LocationModel(
       id: 'gb-london',
       city: 'London',
-      country: 'Inggris',
+      country: 'United Kingdom',
       countryCode: 'GB',
       flag: '🇬🇧',
       currency: 'USD', // Default fallback, user bisa ganti ke IDR
-      timezone: 'GMT',
+      timezone: 'LONDON',
       timezoneOffset: 0,
       region: 'other',
     ),
@@ -256,7 +256,7 @@ class LocationDatabase {
     LocationModel(
       id: 'us-newyork',
       city: 'New York',
-      country: 'Amerika Serikat',
+      country: 'United States',
       countryCode: 'US',
       flag: '🇺🇸',
       currency: 'USD',
@@ -267,7 +267,7 @@ class LocationDatabase {
     LocationModel(
       id: 'us-la',
       city: 'Los Angeles',
-      country: 'Amerika Serikat',
+      country: 'United States',
       countryCode: 'US',
       flag: '🇺🇸',
       currency: 'USD',
@@ -277,8 +277,8 @@ class LocationDatabase {
     ),
     LocationModel(
       id: 'sg-singapore',
-      city: 'Singapura',
-      country: 'Singapura',
+      city: 'Singapore',
+      country: 'Singapore',
       countryCode: 'SG',
       flag: '🇸🇬',
       currency: 'USD',
@@ -300,7 +300,7 @@ class LocationDatabase {
     LocationModel(
       id: 'ae-dubai',
       city: 'Dubai',
-      country: 'Uni Emirat Arab',
+      country: 'United Arab Emirates',
       countryCode: 'AE',
       flag: '🇦🇪',
       currency: 'USD',
@@ -311,7 +311,7 @@ class LocationDatabase {
     LocationModel(
       id: 'kr-seoul',
       city: 'Seoul',
-      country: 'Korea Selatan',
+      country: 'South Korea',
       countryCode: 'KR',
       flag: '🇰🇷',
       currency: 'USD',

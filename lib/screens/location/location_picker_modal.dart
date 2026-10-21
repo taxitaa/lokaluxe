@@ -15,15 +15,22 @@ import '../../core/theme/app_colors.dart';
 /// - Highlight lokasi aktif dengan checkmark
 /// - Menggunakan bahasa UI aktif dari [LocalizationProvider]
 class LocationPickerModal extends StatefulWidget {
-  const LocationPickerModal({super.key});
+  final bool required;
+
+  const LocationPickerModal({super.key, this.required = false});
 
   /// Tampilkan modal dan kembalikan lokasi yang dipilih (atau null jika batal)
-  static Future<LocationModel?> show(BuildContext context) {
+  static Future<LocationModel?> show(
+    BuildContext context, {
+    bool required = false,
+  }) {
     return showModalBottomSheet<LocationModel>(
       context: context,
       isScrollControlled: true,
+      isDismissible: !required,
+      enableDrag: !required,
       backgroundColor: Colors.transparent,
-      builder: (_) => const LocationPickerModal(),
+      builder: (_) => LocationPickerModal(required: required),
     );
   }
 
@@ -106,10 +113,14 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
               ],
             ),
             const Spacer(),
-            IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
-            ),
+            if (!widget.required)
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textSecondary,
+                ),
+              ),
           ],
         ),
       );
@@ -311,7 +322,7 @@ class _LocationPickerModalState extends State<LocationPickerModal> {
                 ),
                 const SizedBox(height: 4),
                 _infoBadge(
-                  loc.isOtherRegion ? 'USD/IDR' : loc.currency,
+                  loc.currency,
                   isActive ? Colors.white24 : AppColors.accentGoldLight,
                   isActive ? Colors.white : AppColors.accentGold,
                 ),
@@ -402,7 +413,7 @@ class _LocationGroup {
       default:
         return _LocationGroup(
           region: region, label: s.otherCountries, flag: '🌍',
-          currency: 'USD/IDR', currencyColor: AppColors.accentGold,
+          currency: 'USD', currencyColor: AppColors.accentGold,
           locations: locs,
         );
     }

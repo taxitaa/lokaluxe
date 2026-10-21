@@ -38,23 +38,15 @@ class LokaLuxeApp extends StatelessWidget {
           create: (_) => CurrencyProvider()..initialize(),
         ),
 
-        // 2. LocalizationProvider — bahasa UI (id/en) global
-        //    Harus didaftarkan SEBELUM LocationProvider
-        ChangeNotifierProvider<LocalizationProvider>(
-          create: (_) => LocalizationProvider()..initialize(),
+        Provider<LocalizationProvider>(
+          create: (_) => LocalizationProvider(),
         ),
 
-        // 3. LocationProvider — lokasi aktif, mengatur currency & bahasa
-        //    Bergantung pada CurrencyProvider + LocalizationProvider
-        ChangeNotifierProxyProvider2<CurrencyProvider, LocalizationProvider,
-            LocationProvider>(
-          create: (ctx) => LocationProvider(
-            ctx.read<CurrencyProvider>(),
-            ctx.read<LocalizationProvider>(),
-          )..initialize(),
-          update: (ctx, currency, localization, previous) =>
-              previous ??
-              LocationProvider(currency, localization)..initialize(),
+        ChangeNotifierProxyProvider<CurrencyProvider, LocationProvider>(
+          create: (ctx) =>
+              LocationProvider(ctx.read<CurrencyProvider>())..initialize(),
+          update: (ctx, currency, previous) =>
+              previous ?? LocationProvider(currency)..initialize(),
         ),
       ],
       // LocalizationScope menyebarkan AppStrings aktif ke seluruh widget tree
@@ -76,6 +68,7 @@ class _AppRoot extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'LokaLuxe',
+      locale: const Locale('en'),
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

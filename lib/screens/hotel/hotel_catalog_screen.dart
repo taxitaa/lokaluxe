@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../core/database/db_helper.dart';
 import '../../core/database/hotel_seed_data.dart';
 import '../../core/models/hotel_model.dart';
+import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
 
 class HotelCatalogScreen extends StatefulWidget {
@@ -509,7 +511,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${hotel.formattedPrice} / malam',
+                                  '${context.watch<CurrencyProvider>().convertAndFormat(hotel.pricePerNight)} / night',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 17,
                                     fontWeight: FontWeight.bold,
@@ -1109,7 +1111,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                               ),
                             ),
                             Text(
-                              '${hotel.formattedPrice} / malam',
+                              '${context.watch<CurrencyProvider>().convertAndFormat(hotel.pricePerNight)} / night',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,

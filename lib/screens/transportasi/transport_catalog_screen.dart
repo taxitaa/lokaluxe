@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../core/database/db_helper.dart';
 import '../../core/models/transport_model.dart';
+import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
 
 class TransportCatalogScreen extends StatefulWidget {
@@ -155,7 +157,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${t.name} dipilih (${t.formattedPrice} ${t.priceUnit})',
+                  '${t.name} selected (${context.read<CurrencyProvider>().convertAndFormat(t.price)} ${t.priceUnit})',
                   style: GoogleFonts.plusJakartaSans(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -238,7 +240,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                                 fontSize: 12,
                                 color: AppColors.textSecondary)),
                         Text(
-                          '${t.formattedPrice} ${t.priceUnit}',
+                          '${context.watch<CurrencyProvider>().convertAndFormat(t.price)} ${t.priceUnit}',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
@@ -610,7 +612,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                                   fontSize: 10, color: AppColors.textMuted),
                             ),
                             Text(
-                              '${t.formattedPrice} ${t.priceUnit}',
+                              '${context.watch<CurrencyProvider>().convertAndFormat(t.price)} ${t.priceUnit}',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,

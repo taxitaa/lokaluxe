@@ -505,6 +505,50 @@ class DBHelper {
     return null;
   }
 
+  static Future<void> updateActiveTripBudget({
+    required double targetBudget,
+    required double transportAllocation,
+    required double hotelAllocation,
+    required double culinaryAllocation,
+    required double activityAllocation,
+  }) async {
+    final db = await database;
+    final trip = await getActiveTrip();
+    final budgetFields = {
+      'targetBudget': targetBudget,
+      'transportAllocation': transportAllocation,
+      'hotelAllocation': hotelAllocation,
+      'culinaryAllocation': culinaryAllocation,
+      'activityAllocation': activityAllocation,
+    };
+
+    if (trip == null) {
+      await db.insert('trips', {
+        'destination': '',
+        'destinationTitle': 'My Trip',
+        'dates': '',
+        'duration': '',
+        'currency': 'IDR',
+        ...budgetFields,
+        'status': 'active',
+      });
+      return;
+    }
+    if (trip.id == null) {
+      throw StateError('The active trip has no database ID.');
+    }
+
+    final updatedRows = await db.update(
+      'trips',
+      budgetFields,
+      where: 'id = ?',
+      whereArgs: [trip.id],
+    );
+    if (updatedRows == 0) {
+      throw StateError('The active trip budget could not be updated.');
+    }
+  }
+
   // --- EXPENSE OPERATIONS ---
   static Future<int> insertExpense(ExpenseModel expense) async {
     final db = await database;

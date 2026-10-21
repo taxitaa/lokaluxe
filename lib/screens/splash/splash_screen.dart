@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../location/location_picker_modal.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
 import '../home/main_navigation_screen.dart';
@@ -33,6 +36,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkActiveSession() async {
     if (!mounted) return;
+    final locationProvider = context.read<LocationProvider>();
+    await locationProvider.initialize();
+    if (!mounted) return;
+
+    if (!locationProvider.hasSavedLocation) {
+      await LocationPickerModal.show(context, required: true);
+      if (!mounted) return;
+    }
+
     final user = await AuthService.checkSession();
     if (!mounted) return;
 
@@ -178,7 +190,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
               const SizedBox(height: 28),
 
-              // Primary "Mulai Jelajah" Button
+              // Primary explore button
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -203,7 +215,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Mulai Eksplorasi',
+                        'Start Exploring',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,

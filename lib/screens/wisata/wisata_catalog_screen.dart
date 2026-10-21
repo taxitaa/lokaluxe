@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/database/db_helper.dart';
+import '../../core/services/currency_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class WisataCatalogScreen extends StatefulWidget {
@@ -78,14 +80,8 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
   // Format harga tiket: 0 -> "Gratis", 15000 -> "Rp 15.000"
   String _harga(dynamic value) {
     final n = (value as num?)?.round() ?? 0;
-    if (n == 0) return 'Gratis';
-    final str = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < str.length; i++) {
-      if (i > 0 && (str.length - i) % 3 == 0) buf.write('.');
-      buf.write(str[i]);
-    }
-    return 'Rp $buf';
+    if (n == 0) return 'Free';
+    return context.watch<CurrencyProvider>().convertAndFormat(n.toDouble());
   }
 
   bool _punyaDeskripsi(dynamic d) {
@@ -95,11 +91,12 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<CurrencyProvider>();
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: Text(
-          'Wisata Nusantara',
+          'Indonesian Attractions',
           style: GoogleFonts.playfairDisplay(color: Color(0xFF1A1A1A), fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.white,
@@ -117,7 +114,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Gagal memuat data wisata:\n${snapshot.error}',
+                  'Could not load attractions:\n${snapshot.error}',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.playfairDisplay(color: Colors.red),
                 ),
@@ -126,7 +123,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
           }
           final semua = snapshot.data ?? [];
           if (semua.isEmpty) {
-            return const Center(child: Text('Belum ada data wisata.'));
+            return const Center(child: Text('No attractions available.'));
           }
 
           // Daftar kategori unik (sudah dirapikan)
@@ -161,7 +158,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                   controller: _searchController,
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
-                    hintText: 'Cari wisata, kota, atau provinsi',
+                    hintText: 'Search attractions, cities, or provinces',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: Colors.white,
@@ -180,7 +177,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
-                    _chip('Semua', _kategori == null, () {
+                    _chip('All', _kategori == null, () {
                       setState(() => _kategori = null);
                     }),
                     for (final k in kategoriList)
@@ -195,14 +192,14 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '${hasil.length} tempat wisata',
+                    '${hasil.length} attractions',
                     style: const TextStyle(color: Colors.black54, fontSize: 12),
                   ),
                 ),
               ),
               Expanded(
                 child: hasil.isEmpty
-                    ? const Center(child: Text('Tidak ada wisata yang cocok.'))
+                    ? const Center(child: Text('No matching attractions.'))
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                         itemCount: hasil.length,

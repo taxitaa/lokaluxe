@@ -42,10 +42,10 @@ class CurrencyService {
   };
 
   static const Map<String, String> currencyNames = {
-    'IDR': 'Rupiah Indonesia',
-    'USD': 'Dolar Amerika',
+    'IDR': 'Indonesian Rupiah',
+    'USD': 'US Dollar',
     'EUR': 'Euro',
-    'JPY': 'Yen Jepang',
+    'JPY': 'Japanese Yen',
   };
 
   static const Map<String, String> currencyFlags = {

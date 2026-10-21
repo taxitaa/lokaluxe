@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'currency_service.dart';
@@ -24,6 +25,7 @@ class CurrencyProvider extends ChangeNotifier {
 
   // Kunci SharedPreferences untuk menyimpan pilihan mata uang user
   static const String _currencyPrefKey = 'selected_currency';
+  Future<void>? _initialization;
 
   // Getter
   String get selectedCurrency => _selectedCurrency;
@@ -33,9 +35,11 @@ class CurrencyProvider extends ChangeNotifier {
   DateTime? get lastFetchTime => _lastFetchTime;
 
   /// Menginisialisasi provider: muat preferensi & ambil kurs
-  Future<void> initialize() async {
+  Future<void> initialize() => _initialization ??= _initialize();
+
+  Future<void> _initialize() async {
     await _loadSavedCurrency();
-    await refreshRates();
+    unawaited(refreshRates());
   }
 
   /// Memuat pilihan mata uang yang tersimpan dari SharedPreferences

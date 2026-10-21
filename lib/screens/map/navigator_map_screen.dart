@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
 
 class NavigatorMapScreen extends StatefulWidget {
@@ -17,7 +19,7 @@ class _NavigatorMapScreenState extends State<NavigatorMapScreen> {
       'title': 'Candi Borobudur',
       'category': 'Wisata Candi',
       'distance': '18 km • 35 mnt',
-      'price': 'Rp 750.000',
+      'price': 750000,
       'rating': '4.8',
       'image': 'assets/images/dest_borobudur.jpg',
       'x': 0.45,
@@ -27,7 +29,7 @@ class _NavigatorMapScreenState extends State<NavigatorMapScreen> {
       'title': 'Tanah Lot & Pantai',
       'category': 'Pesisir Pantai',
       'distance': '24 km • 45 mnt',
-      'price': 'Rp 1.250.000',
+      'price': 1250000,
       'rating': '4.9',
       'image': 'assets/images/dest_tanahlot.jpg',
       'x': 0.70,
@@ -37,7 +39,7 @@ class _NavigatorMapScreenState extends State<NavigatorMapScreen> {
       'title': 'Nusa Penida Coastal',
       'category': 'Pulau & Laut',
       'distance': '38 km • Speedboat',
-      'price': 'Rp 650.000',
+      'price': 650000,
       'rating': '4.9',
       'image': 'assets/images/dest_nusapenida.jpg',
       'x': 0.30,
@@ -47,6 +49,7 @@ class _NavigatorMapScreenState extends State<NavigatorMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currencyProvider = context.watch<CurrencyProvider>();
     final selectedPin = _pins[_selectedPinIndex];
 
     return Scaffold(
@@ -312,7 +315,9 @@ class _NavigatorMapScreenState extends State<NavigatorMapScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              selectedPin['price'],
+                              currencyProvider.convertAndFormat(
+                                (selectedPin['price'] as num).toDouble(),
+                              ),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,

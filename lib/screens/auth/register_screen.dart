@@ -21,7 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _obscurePassword = true;
   bool _agreedToTerms = true;
-  final String _selectedCurrency = 'IDR (Rupiah Indonesia)';
+  final String _selectedCurrency = 'IDR (Indonesian Rupiah)';
 
   @override
   void dispose() {
@@ -37,7 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_agreedToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Anda harus menyetujui Ketentuan Layanan untuk melanjutkan'),
+          content: Text('Please accept the Terms of Service to continue.'),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -223,7 +223,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Headline & Subtitle
               Text(
-                'Buat Akun Baru',
+                'Create your account',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
@@ -233,7 +233,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Mulai rencanakan liburan hemat & terarah bersama kami.',
+                'Start planning thoughtful trips with us.',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
@@ -246,7 +246,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Nama Lengkap
               Text(
-                'Nama Lengkap',
+                'Full name',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -299,7 +299,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Alamat Email
               Text(
-                'Alamat Email',
+                'Email address',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -365,7 +365,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Kata Sandi',
+                    'Password',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -474,7 +474,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Mata Uang Utama Card
               Text(
-                'Mata Uang Utama',
+                'Preferred currency',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -572,7 +572,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Saya menyetujui Ketentuan Layanan & Kebijakan Privasi LocalLuxe.',
+                      'I agree to the LocalLuxe Terms of Service and Privacy Policy.',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -612,7 +612,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Daftar Akun',
+                              'Create account',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -654,7 +654,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Pendaftaran akun sosial segera hadir'),
+                            content: Text('Social sign-up is coming soon.'),
                             backgroundColor: AppColors.primaryGreen,
                           ),
                         );
@@ -709,7 +709,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Pendaftaran akun sosial segera hadir'),
+                            content: Text('Social sign-up is coming soon.'),
                             backgroundColor: AppColors.primaryGreen,
                           ),
                         );
@@ -757,7 +757,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Sudah memiliki akun? ',
+                      'Already have an account? ',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -766,7 +766,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
                       child: Text(
-                        'Masuk di sini',
+                        'Sign in',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

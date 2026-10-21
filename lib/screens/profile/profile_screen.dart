@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/preferences_service.dart';
+import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../auth/login_screen.dart';
+import '../location/location_picker_modal.dart';
 import '../splash/splash_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -46,7 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Terima kasih! Saran & kesan Anda telah kami terima.',
+          'Thank you! Your feedback has been received.',
           style: GoogleFonts.plusJakartaSans(color: Colors.white),
         ),
         backgroundColor: AppColors.primaryGreen,
@@ -177,11 +180,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Stats Row
               Row(
                 children: [
-                  _buildStatCard('3 Trips', 'Selesai'),
+                  _buildStatCard('3 Trips', 'Completed'),
                   const SizedBox(width: 10),
-                  _buildStatCard('450', 'Poin Reward'),
+                  _buildStatCard('450', 'Reward points'),
                   const SizedBox(width: 10),
-                  _buildStatCard('2', 'Voucher Aktif'),
+                  _buildStatCard('2', 'Active vouchers'),
                 ],
               ),
 
@@ -189,7 +192,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // Menu Settings Section
               Text(
-                'Pengaturan Akun & Preferensi',
+                'Account & preferences',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -208,26 +211,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     _buildMenuItem(
                       icon: Icons.person_outline_rounded,
-                      title: 'Edit Profil Pribadi',
-                      subtitle: 'Nama, kontak & data identitas',
+                      title: 'Edit personal profile',
+                      subtitle: 'Name, contact details and personal information',
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
                     _buildMenuItem(
                       icon: Icons.notifications_none_rounded,
-                      title: 'Notifikasi & Budget Alert',
-                      subtitle: 'Pemberitahuan sisa anggaran harian',
+                      title: 'Notifications & budget alerts',
+                      subtitle: 'Daily remaining budget notifications',
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
-                    _buildMenuItem(
-                      icon: Icons.currency_exchange_rounded,
-                      title: 'Mata Uang & Bahasa',
-                      subtitle: 'IDR (Rupiah) • Bahasa Indonesia',
+                    Consumer<LocationProvider>(
+                      builder: (context, locationProvider, _) =>
+                          _buildMenuItem(
+                        icon: Icons.location_on_outlined,
+                        title: 'Location & regional settings',
+                        subtitle:
+                            '${locationProvider.currentLocation.displayName} · ${locationProvider.effectiveCurrency} · ${locationProvider.activeTimezone}',
+                        onTap: () => LocationPickerModal.show(context),
+                      ),
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
                     _buildMenuItem(
                       icon: Icons.security_rounded,
-                      title: 'Keamanan & Biometrik',
-                      subtitle: 'PIN, Sidik Jari & Face ID',
+                      title: 'Security & biometrics',
+                      subtitle: 'PIN, fingerprint and Face ID',
                     ),
                   ],
                 ),
@@ -237,7 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // Form Saran dan Kesan
               Text(
-                'Saran dan Kesan untuk LokaLuxe',
+                'Share feedback with LokaLuxe',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -257,7 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Bagaimana pengalaman Anda menggunakan aplikasi?',
+                      'How has your experience with the app been?',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -300,7 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       decoration: InputDecoration(
                         hintText:
-                            'Tuliskan saran, kesan, atau ide fitur baru di sini...',
+                            'Share feedback, impressions, or feature ideas...',
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           color: AppColors.textMuted,
@@ -332,7 +340,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         child: Text(
-                          'Kirim Saran & Kesan',
+                          'Send feedback',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -363,7 +371,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       },
                       icon: const Icon(Icons.refresh_rounded, size: 16),
                       label: Text(
-                        'Reset Alur & Buka Splash Screen Awal',
+                        'Reset flow and return to the welcome screen',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -450,6 +458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Material(
       color: Colors.transparent,
@@ -482,7 +491,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           size: 18,
           color: AppColors.textSecondary,
         ),
-        onTap: () {},
+        onTap: onTap,
       ),
     );
   }

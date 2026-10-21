@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../map/navigator_map_screen.dart';
 
@@ -13,7 +15,7 @@ class ItineraryScreen extends StatefulWidget {
 class _ItineraryScreenState extends State<ItineraryScreen> {
   int _selectedDay = 0;
 
-  final List<String> _days = ['Hari 1', 'Hari 2', 'Hari 3', 'Hari 4', 'Hari 5'];
+  final List<String> _days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
 
   final List<List<Map<String, dynamic>>> _activitiesByDay = [
     [
@@ -21,7 +23,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '08:30',
         'title': 'Tiba di Bandara & Check-in Hotel',
         'location': 'The Phoenix Hotel Yogyakarta',
-        'cost': 'Rp 850.000',
+        'cost': 850000,
         'category': 'Penginapan',
         'icon': Icons.hotel_rounded,
       },
@@ -29,7 +31,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '11:00',
         'title': 'Kraton Ngayogyakarta Hadiningrat',
         'location': 'Pusat Kota Yogyakarta',
-        'cost': 'Rp 25.000',
+        'cost': 25000,
         'category': 'Wisata Budaya',
         'icon': Icons.account_balance_rounded,
       },
@@ -37,7 +39,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '13:30',
         'title': 'Makan Siang Gudeg Yu Djum Wijilan',
         'location': 'Jl. Wijilan, Panembahan',
-        'cost': 'Rp 65.000',
+        'cost': 65000,
         'category': 'Kuliner',
         'icon': Icons.restaurant_rounded,
       },
@@ -45,7 +47,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '16:30',
         'title': 'Sunset di Candi Ratu Boko',
         'location': 'Bokoharjo, Prambanan',
-        'cost': 'Rp 85.000',
+        'cost': 85000,
         'category': 'Sunset View',
         'icon': Icons.wb_sunny_rounded,
       },
@@ -55,7 +57,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '04:30',
         'title': 'Sunrise Tour Candi Borobudur',
         'location': 'Magelang, Jawa Tengah',
-        'cost': 'Rp 150.000',
+        'cost': 150000,
         'category': 'Wisata Candi',
         'icon': Icons.temple_buddhist_rounded,
       },
@@ -63,7 +65,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '09:30',
         'title': 'Sarapan Tradisional Pawon Luwak Coffee',
         'location': 'Borobudur, Magelang',
-        'cost': 'Rp 75.000',
+        'cost': 75000,
         'category': 'Kuliner',
         'icon': Icons.coffee_rounded,
       },
@@ -71,7 +73,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '14:00',
         'title': 'Jeep Tour Merapi Lava Tour',
         'location': 'Kaliurang, Sleman',
-        'cost': 'Rp 450.000',
+        'cost': 450000,
         'category': 'Petualangan',
         'icon': Icons.terrain_rounded,
       },
@@ -81,7 +83,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '09:00',
         'title': 'Pantai Timang & Gondola Tradisional',
         'location': 'Tepus, Gunungkidul',
-        'cost': 'Rp 350.000',
+        'cost': 350000,
         'category': 'Pantai & Bahari',
         'icon': Icons.waves_rounded,
       },
@@ -89,7 +91,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '14:30',
         'title': 'Goa Pindul Cave Tubing',
         'location': 'Karangmojo, Gunungkidul',
-        'cost': 'Rp 120.000',
+        'cost': 120000,
         'category': 'Air & Goa',
         'icon': Icons.kayaking_rounded,
       },
@@ -99,7 +101,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '10:00',
         'title': 'Belanja Kerajinan Perak Kotagede',
         'location': 'Kotagede, Yogyakarta',
-        'cost': 'Rp 300.000',
+        'cost': 300000,
         'category': 'Oleh-oleh',
         'icon': Icons.shopping_bag_rounded,
       },
@@ -109,7 +111,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '11:00',
         'title': 'Jalan Santai Malioboro & Titik Nol',
         'location': 'Jl. Malioboro',
-        'cost': 'Rp 100.000',
+        'cost': 100000,
         'category': 'City Walk',
         'icon': Icons.directions_walk_rounded,
       },
@@ -117,7 +119,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         'time': '16:00',
         'title': 'Perjalanan Menuju Bandara YIA',
         'location': 'Kulon Progo',
-        'cost': 'Rp 50.000',
+        'cost': 50000,
         'category': 'Transportasi',
         'icon': Icons.flight_takeoff_rounded,
       },
@@ -126,6 +128,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currencyProvider = context.watch<CurrencyProvider>();
     final activities = _activitiesByDay[_selectedDay];
 
     return Scaffold(
@@ -143,7 +146,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         ),
         centerTitle: true,
         title: Text(
-          'Itinerary Perjalanan',
+          'Trip itinerary',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -196,7 +199,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '5 Hari • 12 Destinasi Wisata',
+                          '5 days • 12 attractions',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 11,
                             color: Colors.white.withValues(alpha: 0.8),
@@ -353,7 +356,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                                     ),
                                   ),
                                   Text(
-                                    item['cost'],
+                                    currencyProvider.convertAndFormat(
+                                      (item['cost'] as num).toDouble(),
+                                    ),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
@@ -417,7 +422,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                   },
                   icon: const Icon(Icons.map_rounded, size: 18),
                   label: Text(
-                    'Buka Peta Navigasi',
+                    'Open navigation map',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,

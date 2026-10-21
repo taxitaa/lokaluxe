@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Email dan kata sandi wajib diisi'),
+          content: Text('Email and password are required.'),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -298,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Headline & Subtitle
               Text(
-                'Masuk ke LocalLuxe',
+                'Sign in to LocalLuxe',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -321,7 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Email Input Field
               Text(
-                'Email Anda',
+                'Your email',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -384,7 +384,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Password Input Field
               Text(
-                'Kata Sandi',
+                'Password',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -456,7 +456,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text(
-                    'Lupa Kata Sandi?',
+                    'Forgot password?',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -495,7 +495,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Masuk',
+                              'Sign in',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -553,7 +553,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Fitur masuk dengan akun Google segera hadir'),
+                          content: Text('Google sign-in is coming soon.'),
                           backgroundColor: AppColors.primaryGreen,
                         ),
                       );
@@ -604,7 +604,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Belum punya akun? ',
+                      "Don't have an account? ",
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -619,7 +619,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         );
                       },
                       child: Text(
-                        'Daftar Sekarang',
+                        'Create an account',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

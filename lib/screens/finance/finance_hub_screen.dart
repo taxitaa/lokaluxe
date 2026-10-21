@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
+import '../location/location_picker_modal.dart';
 
 /// Layar Finance Hub yang ditingkatkan dengan:
 /// - Konversi mata uang real-time (IDR ↔ USD/EUR/JPY)
@@ -164,7 +165,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
       ),
       centerTitle: true,
       title: Text(
-        'Finance & Waktu',
+        'Finance & Time',
         style: GoogleFonts.plusJakartaSans(
           fontSize: 16,
           fontWeight: FontWeight.w700,
@@ -184,7 +185,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
               });
             }
           },
-          tooltip: 'Perbarui Kurs',
+          tooltip: 'Refresh rates',
         ),
       ],
     );
@@ -214,9 +215,9 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
         ),
         unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
         tabs: const [
-          Tab(text: '💱 Konversi'),
-          Tab(text: '💰 Harga'),
-          Tab(text: '🕐 Waktu'),
+          Tab(text: '💱 Currency'),
+          Tab(text: '💰 Prices'),
+          Tab(text: '🕐 Time'),
         ],
       ),
     );
@@ -276,7 +277,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
             ),
             const SizedBox(width: 10),
             Text(
-              'Memperbarui kurs mata uang...',
+              'Updating exchange rates...',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 color: AppColors.primaryGreen,
@@ -315,8 +316,8 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
 
     // Sukses
     final fetchStr = provider.lastFetchTime != null
-        ? 'Diperbarui: ${TimeZoneService.formatTime(provider.lastFetchTime!.toLocal())}'
-        : 'Kurs real-time aktif';
+        ? 'Updated: ${TimeZoneService.formatTime(provider.lastFetchTime!.toLocal())}'
+        : 'Live exchange rates';
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -340,13 +341,14 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
     );
   }
 
-  /// Selector mata uang global yang mempengaruhi semua tampilan harga
+  /// Shows the location that controls the app-wide currency and time zone.
   Widget _buildGlobalCurrencySelector(CurrencyProvider provider) {
+    final location = context.watch<LocationProvider>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Mata Uang Tampilan',
+          'Regional settings',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 14,
             fontWeight: FontWeight.w700,
@@ -355,65 +357,22 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'Pilih mata uang yang digunakan di seluruh aplikasi',
+          '${location.currentLocation.displayName} · ${provider.selectedCurrency}',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 11,
             color: AppColors.textSecondary,
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: ['IDR', 'USD', 'EUR', 'JPY'].map((currency) {
-            final isSelected = provider.selectedCurrency == currency;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => provider.changeCurrency(currency),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primaryGreen
-                        : AppColors.pureWhite,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.primaryGreen
-                          : AppColors.borderLight,
-                      width: 1.5,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: AppColors.primaryGreen.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            )
-                          ]
-                        : [],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        CurrencyService.currencyFlags[currency] ?? '',
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        currency,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected ? Colors.white : AppColors.textDark,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () async {
+            await LocationPickerModal.show(context);
+            if (!mounted) return;
+            final selected = context.read<CurrencyProvider>().selectedCurrency;
+            setState(() => _targetCurrency = selected == 'IDR' ? 'USD' : selected);
+          },
+          icon: const Icon(Icons.location_on_outlined, size: 16),
+          label: const Text('Change location'),
         ),
       ],
     );
@@ -447,7 +406,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Konversi Cepat',
+            'Quick converter',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -456,7 +415,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
           ),
           const SizedBox(height: 14),
 
-          // Input IDR
+          // Input in IDR
           _buildCurrencyRow(
             flag: '🇮🇩',
             code: 'IDR',
@@ -602,7 +561,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Kurs dari IDR',
+          'Rates from IDR',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 14,
             fontWeight: FontWeight.w700,
@@ -743,7 +702,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Harga ditampilkan dalam ${provider.selectedCurrency}',
+                  'Prices are shown in ${provider.selectedCurrency}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -763,7 +722,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
           TextButton(
             onPressed: () => _tabController.animateTo(0),
             child: Text(
-              'Ubah',
+              'Change',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 color: AppColors.accentGold,
@@ -857,7 +816,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
                 ),
               ),
               Text(
-                '/ malam',
+                '/ night',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 10,
                   color: AppColors.textSecondary,
@@ -988,7 +947,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
 
               // Grid zona waktu referensi (WIB, Tokyo, London, Paris)
               Text(
-                'Zona Waktu Referensi',
+                'Reference time zones',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -1291,7 +1250,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
                   size: 16, color: AppColors.primaryGreen),
               const SizedBox(width: 8),
               Text(
-                'Selisih Waktu (dari WIB)',
+                'Time difference (from WIB)',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

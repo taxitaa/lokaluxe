@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../destination/destination_detail_screen.dart';
 
@@ -17,28 +19,28 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     {
       'isUser': false,
       'text':
-          'Halo Amalia! Saya Loka Concierge AI, asisten perjalanan pribadi Anda. Ada destinasi atau rencana budget yang ingin Anda diskusikan hari ini?',
+          'Hello Amalia! I am your Loka travel concierge. What destination or budget would you like to explore today?',
       'time': '10:15',
     },
     {
       'isUser': true,
       'text':
-          'Bisa berikan rekomendasi wisata alam eksotis di Bali dengan budget di bawah Rp 1.500.000?',
+          'Can you recommend an extraordinary nature trip in Bali?',
       'time': '10:16',
     },
     {
       'isUser': false,
       'text':
-          'Tentu! Berdasarkan preferensi Anda, Tanah Lot & Pesisir Tabanan sangat ideal dengan estimasi biaya Rp 1.250.000 sudah termasuk tiket, transportasi, dan kuliner sunset. Berikut rekomendasinya:',
+          'Tanah Lot and the Tabanan coast are a great fit. The estimated price includes admission, transport, and sunset dining. Here is a recommendation:',
       'time': '10:16',
       'hasCard': true,
     },
   ];
 
   final List<String> _quickPrompts = [
-    'Bantu atur budget Labuan Bajo',
-    'Rekomendasi hotel di Jogja',
-    'Itinerary 3 hari di Bali',
+    'Help me plan a Labuan Bajo budget',
+    'Recommend a hotel in Yogyakarta',
+    'Create a three-day Bali itinerary',
   ];
 
   void _sendMessage([String? textToSend]) {
@@ -49,7 +51,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
       _messages.add({
         'isUser': true,
         'text': text,
-        'time': 'Sekarang',
+        'time': 'Now',
       });
       _messageController.clear();
     });
@@ -61,8 +63,8 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
         _messages.add({
           'isUser': false,
           'text':
-              'Rencana luar biasa! Saya telah menghitung alokasi anggaran otomatis yang optimal untuk perjalanan tersebut.',
-          'time': 'Sekarang',
+              'Great plan! I have calculated an optimized budget allocation for your trip.',
+          'time': 'Now',
         });
       });
     });
@@ -70,6 +72,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currencyProvider = context.watch<CurrencyProvider>();
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -103,7 +106,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                   ),
                 ),
                 Text(
-                  'Aktif • Smart Travel Guide',
+                  'Online • Smart travel guide',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: AppColors.successGreen,
@@ -184,11 +187,11 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (context) =>
-                                        const DestinationDetailScreen(
+                                        DestinationDetailScreen(
                                       title: 'Tanah Lot & Pesisir Tabanan',
                                       location: 'Tabanan, Bali',
                                       imagePath: 'assets/images/dest_tanahlot.jpg',
-                                      price: 'Rp 1.250.000',
+                                      price: currencyProvider.convertAndFormat(1250000),
                                       rating: '4.9',
                                     ),
                                   ),
@@ -234,7 +237,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
-                                            'Rp 1.250.000 / org',
+                                            '${currencyProvider.convertAndFormat(1250000)} / person',
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w700,

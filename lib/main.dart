@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/database/database_initializer.dart';
 import 'core/services/currency_provider.dart';
+import 'core/services/location_provider.dart';
 import 'core/theme/app_colors.dart';
 import 'screens/splash/splash_screen.dart';
 
@@ -32,10 +33,24 @@ class LokaLuxeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // CurrencyProvider: state management global untuk konversi mata uang
-        // Menyediakan data kurs ke seluruh widget tree
-        ChangeNotifierProvider(
+        // CurrencyProvider: state management global untuk konversi mata uang.
+        // Harus didaftarkan SEBELUM LocationProvider karena LocationProvider
+        // membutuhkan referensi ke CurrencyProvider.
+        ChangeNotifierProvider<CurrencyProvider>(
           create: (_) => CurrencyProvider()..initialize(),
+        ),
+
+        // LocationProvider: mengelola lokasi aktif & mengatur otomasi
+        // mata uang + zona waktu berdasarkan lokasi yang dipilih.
+        ChangeNotifierProxyProvider<CurrencyProvider, LocationProvider>(
+          create: (ctx) {
+            final currencyProvider = ctx.read<CurrencyProvider>();
+            return LocationProvider(currencyProvider)..initialize();
+          },
+          // Jika CurrencyProvider rebuild, LocationProvider tetap menggunakan
+          // referensi yang sama (tidak perlu re-create)
+          update: (ctx, currencyProvider, previous) =>
+              previous ?? LocationProvider(currencyProvider)..initialize(),
         ),
       ],
       child: MaterialApp(

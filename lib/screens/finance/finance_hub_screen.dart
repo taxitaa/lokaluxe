@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/services/currency_provider.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/location_provider.dart';
 import '../../core/services/timezone_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/database/db_helper.dart';
@@ -966,49 +967,55 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
   // ============================================================
 
   Widget _buildTimeZoneTab() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header info tanggal WIB
-          _buildDateHeader(),
-          const SizedBox(height: 16),
+    return Consumer<LocationProvider>(
+      builder: (context, locProvider, _) {
+        final activeLoc = locProvider.currentLocation;
+        final activeZoneInfo = TimeZoneService.getZoneInfo(activeLoc.timezone);
 
-          // Kartu zona waktu besar (WIB sebagai utama)
-          _buildMainTimeCard(),
-          const SizedBox(height: 16),
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Banner lokasi aktif
+              _buildActiveLocationBanner(activeLoc, activeZoneInfo),
+              const SizedBox(height: 16),
 
-          // Grid zona waktu lainnya
-          Text(
-            'Zona Waktu Lainnya',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textDark,
-            ),
+              // Kartu waktu besar untuk lokasi aktif
+              _buildMainTimeCard(activeZoneInfo),
+              const SizedBox(height: 16),
+
+              // Grid zona waktu referensi (WIB, Tokyo, London, Paris)
+              Text(
+                'Zona Waktu Referensi',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ..._timeZones.map((tz) => _buildTimeZoneCard(tz, activeZoneInfo.code)),
+
+              const SizedBox(height: 20),
+              _buildTimeConversionInfo(),
+            ],
           ),
-          const SizedBox(height: 10),
-          ..._timeZones.skip(1).map((tz) => _buildTimeZoneCard(tz)),
-
-          const SizedBox(height: 20),
-
-          // Info konversi waktu
-          _buildTimeConversionInfo(),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildDateHeader() {
-    final wib = _timeZones.isNotEmpty ? _timeZones.first : null;
-    if (wib == null) return const SizedBox.shrink();
-
+  /// Banner info lokasi aktif dengan emoji bendera & mata uang
+  Widget _buildActiveLocationBanner(
+    dynamic activeLoc,
+    TimeZoneInfo activeZone,
+  ) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.primaryGreen, AppColors.primaryGreenLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1017,28 +1024,45 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
       ),
       child: Row(
         children: [
-          const Text('🗓️', style: TextStyle(fontSize: 24)),
+          Text(activeLoc.flag, style: const TextStyle(fontSize: 28)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  TimeZoneService.formatDate(wib.localTime),
+                  '${activeLoc.city}, ${activeLoc.country}',
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
                   ),
                 ),
                 Text(
-                  'Waktu Indonesia Barat (WIB)',
+                  '${activeZone.name} (${activeZone.offset})',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: Colors.white70,
                   ),
                 ),
+                Text(
+                  TimeZoneService.formatDate(activeZone.localTime),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: Colors.white60,
+                  ),
+                ),
               ],
+            ),
+          ),
+          // Waktu singkat
+          Text(
+            TimeZoneService.formatTimeShort(activeZone.localTime),
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.accentGold,
+              letterSpacing: -0.5,
             ),
           ),
         ],
@@ -1046,11 +1070,8 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
     );
   }
 
-  /// Kartu waktu besar untuk WIB (zona utama Indonesia)
-  Widget _buildMainTimeCard() {
-    final wib = _timeZones.isNotEmpty ? _timeZones.first : null;
-    if (wib == null) return const SizedBox.shrink();
-
+  /// Kartu waktu besar untuk zona waktu lokasi aktif
+  Widget _buildMainTimeCard(TimeZoneInfo tz) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -1071,10 +1092,10 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(wib.flag, style: const TextStyle(fontSize: 20)),
+              Text(tz.flag, style: const TextStyle(fontSize: 20)),
               const SizedBox(width: 8),
               Text(
-                wib.code,
+                tz.code,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -1089,7 +1110,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  wib.offset,
+                  tz.offset,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1101,7 +1122,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            TimeZoneService.formatTime(wib.localTime),
+            TimeZoneService.formatTime(tz.localTime),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 52,
               fontWeight: FontWeight.w800,
@@ -1110,7 +1131,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
             ),
           ),
           Text(
-            wib.location,
+            tz.location,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               color: AppColors.textSecondary,
@@ -1122,20 +1143,27 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
     );
   }
 
-  /// Kartu zona waktu individual (WITA, WIT, London)
-  Widget _buildTimeZoneCard(TimeZoneInfo tz) {
+  /// Kartu zona waktu individual dalam daftar referensi.
+  ///
+  /// [activeCode] kode zona aktif (dari lokasi yang dipilih pengguna),
+  /// digunakan untuk menambahkan highlight/badge "AKTIF" pada kartu terkait.
+  Widget _buildTimeZoneCard(TimeZoneInfo tz, String activeCode) {
+    final isActive = tz.code == activeCode;
     final isLondon = tz.flag == '🇬🇧';
+
+    Color borderColor = AppColors.borderLight;
+    if (isActive) borderColor = AppColors.primaryGreen.withValues(alpha: 0.5);
+    else if (isLondon) borderColor = AppColors.accentGold.withValues(alpha: 0.4);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.pureWhite,
+        color: isActive
+            ? AppColors.primaryGreen.withValues(alpha: 0.05)
+            : AppColors.pureWhite,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isLondon
-              ? AppColors.accentGold.withValues(alpha: 0.4)
-              : AppColors.borderLight,
-        ),
+        border: Border.all(color: borderColor, width: isActive ? 1.5 : 1.0),
       ),
       child: Row(
         children: [
@@ -1147,9 +1175,11 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: isLondon
-                      ? AppColors.accentGoldLight
-                      : AppColors.primaryGreenSubtle,
+                  color: isActive
+                      ? AppColors.primaryGreenSubtle
+                      : isLondon
+                          ? AppColors.accentGoldLight
+                          : AppColors.primaryGreenSubtle,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -1157,12 +1187,31 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: isLondon
+                    color: isLondon && !isActive
                         ? AppColors.accentGold
                         : AppColors.primaryGreen,
                   ),
                 ),
               ),
+              if (isActive) ...[
+                const SizedBox(height: 3),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGreen,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'AKTIF',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 7,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(width: 14),
@@ -1204,7 +1253,11 @@ class _FinanceHubScreenState extends State<FinanceHubScreen>
             style: GoogleFonts.plusJakartaSans(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: isLondon ? AppColors.accentGold : AppColors.primaryGreen,
+              color: isActive
+                  ? AppColors.primaryGreen
+                  : isLondon
+                      ? AppColors.accentGold
+                      : AppColors.primaryGreen,
               letterSpacing: -0.5,
             ),
           ),

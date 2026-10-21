@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/currency_provider.dart';
+import '../../core/services/currency_service.dart';
+import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../budget/budget_planner_screen.dart';
 import '../destination/destination_detail_screen.dart';
 import '../finance/finance_hub_screen.dart';
 import '../game/mini_game_screen.dart';
 import '../itinerary/itinerary_screen.dart';
+import '../location/location_picker_modal.dart';
 import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
@@ -55,48 +60,69 @@ class _BerandaScreenState extends State<BerandaScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CURRENT LOCATION',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.0,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.pureWhite,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: _softShadow(0.05),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                  // Location pill — terhubung ke LocationProvider
+                  Consumer2<LocationProvider, CurrencyProvider>(
+                    builder: (ctx, locProvider, currProvider, _) {
+                      final loc = locProvider.currentLocation;
+                      final currency = currProvider.selectedCurrency;
+                      final symbol =
+                          CurrencyService.currencySymbols[currency] ?? '';
+
+                      return GestureDetector(
+                        onTap: () => LocationPickerModal.show(context),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.location_on_rounded,
-                                size: 13, color: AppColors.accentGold),
-                            const SizedBox(width: 4),
                             Text(
-                              'Nusantara, ID',
+                              'CURRENT LOCATION',
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.textDark,
+                                letterSpacing: 1.0,
+                                color: AppColors.textMuted,
                               ),
                             ),
-                            const SizedBox(width: 2),
-                            const Icon(Icons.keyboard_arrow_down_rounded,
-                                size: 15, color: AppColors.textSecondary),
+                            const SizedBox(height: 3),
+                            // Pill lokasi yang bisa diklik
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.pureWhite,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: _softShadow(0.05),
+                                border: Border.all(
+                                    color: AppColors.borderLight, width: 1),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(loc.flag,
+                                      style: const TextStyle(fontSize: 13)),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '${loc.city}, ${loc.countryCode}',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  const Icon(Icons.keyboard_arrow_down_rounded,
+                                      size: 15,
+                                      color: AppColors.textSecondary),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            // Badge mata uang aktif + selector USD/IDR jika perlu
+                            _buildCurrencyBadge(
+                                locProvider, currency, symbol),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   Row(
                     children: [
@@ -740,6 +766,85 @@ class _BerandaScreenState extends State<BerandaScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Currency Badge Helpers ───────────────────────────────────────────────
+
+  /// Badge mata uang aktif di bawah location pill.
+  ///
+  /// Jika lokasi adalah region "other", tampilkan toggle USD ↔ IDR.
+  /// Jika tidak, tampilkan badge statis sesuai mata uang region.
+  Widget _buildCurrencyBadge(
+    LocationProvider locProvider,
+    String currency,
+    String symbol,
+  ) {
+    if (locProvider.needsCurrencySelector) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _currencyToggleChip(
+            label: 'USD',
+            isSelected: currency == 'USD',
+            onTap: () => locProvider.changeOtherRegionCurrency('USD'),
+          ),
+          const SizedBox(width: 4),
+          _currencyToggleChip(
+            label: 'IDR',
+            isSelected: currency == 'IDR',
+            onTap: () => locProvider.changeOtherRegionCurrency('IDR'),
+          ),
+        ],
+      );
+    }
+
+    // Badge statis untuk IDR / JPY / EUR
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreen.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$symbol $currency',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppColors.primaryGreen,
+        ),
+      ),
+    );
+  }
+
+  /// Chip kecil toggle mata uang (USD / IDR) untuk region "other"
+  Widget _currencyToggleChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryGreen : AppColors.pureWhite,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color:
+                isSelected ? AppColors.primaryGreen : AppColors.borderLight,
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: isSelected ? Colors.white : AppColors.textSecondary,
+          ),
         ),
       ),
     );

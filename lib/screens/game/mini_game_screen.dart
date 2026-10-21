@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/services/game_coin_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'loka_catch_screen.dart';
 import '../voucher/voucher_screen.dart';
 
+/// Hub layar mini game - hanya menampilkan LokaCatch
 class MiniGameScreen extends StatefulWidget {
   const MiniGameScreen({super.key});
 
@@ -11,129 +14,45 @@ class MiniGameScreen extends StatefulWidget {
 }
 
 class _MiniGameScreenState extends State<MiniGameScreen> {
-  int _score = 450;
-  int _currentQuestionIndex = 0;
-  int? _selectedAnswerIndex;
-  bool _answered = false;
+  int _totalCoins = 0;
+  int _totalSessions = 0;
+  int _highScore = 0;
 
-  final List<Map<String, dynamic>> _questions = [
-    {
-      'question':
-          'Candi Buddha terbesar di dunia yang berada di Jawa Tengah dan dinobatkan sebagai Warisan Dunia UNESCO adalah?',
-      'options': [
-        'Candi Prambanan',
-        'Candi Borobudur',
-        'Candi Mendut',
-        'Candi Ratu Boko',
-      ],
-      'correctIndex': 1,
-      'fact':
-          'Candi Borobudur dibangun pada abad ke-8 oleh Dinasti Syailendra dan memiliki 504 arca Buddha.',
-    },
-    {
-      'question':
-          'Kepulauan di Papua Barat yang terkenal dengan keanekaragaman hayati laut terkaya di planet Bumi adalah?',
-      'options': [
-        'Kepulauan Seribu',
-        'Kepulauan Derawan',
-        'Raja Ampat',
-        'Wakatobi',
-      ],
-      'correctIndex': 2,
-      'fact':
-          'Raja Ampat memiliki lebih dari 75% spesies karang dunia dan lebih dari 1.500 jenis ikan karang.',
-    },
-  ];
-
-  void _handleOptionSelect(int index) {
-    if (_answered) return;
-
-    setState(() {
-      _selectedAnswerIndex = index;
-      _answered = true;
-      if (index == _questions[_currentQuestionIndex]['correctIndex']) {
-        _score += 100;
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
   }
 
-  void _nextQuestion() {
-    if (_currentQuestionIndex < _questions.length - 1) {
+  /// Memuat statistik game dari penyimpanan lokal
+  Future<void> _loadStats() async {
+    final coins = await GameCoinService.getTotalCoins();
+    final sessions = await GameCoinService.getTotalSessions();
+    final hs = await GameCoinService.getHighScore();
+    if (mounted) {
       setState(() {
-        _currentQuestionIndex++;
-        _selectedAnswerIndex = null;
-        _answered = false;
+        _totalCoins = coins;
+        _totalSessions = sessions;
+        _highScore = hs;
       });
-    } else {
-      // Reached end of game
-      _showResultDialog();
     }
-  }
-
-  void _showResultDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.pureWhite,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Text(
-          '🎉 Luar Biasa!',
-          style: GoogleFonts.plusJakartaSans(
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryGreen,
-          ),
-        ),
-        content: Text(
-          'Skor Akhir: $_score Poin.\nAnda berhak mengklaim Voucher Wisata Eksklusif!',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
-            color: AppColors.textDark,
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const VoucherScreen(),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text('Klaim Voucher'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final q = _questions[_currentQuestionIndex];
-
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         backgroundColor: AppColors.warmCream,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.chevron_left_rounded,
-            size: 28,
-            color: AppColors.textDark,
-          ),
+          icon: const Icon(Icons.chevron_left_rounded,
+              size: 28, color: AppColors.textDark),
           onPressed: () => Navigator.of(context).pop(),
         ),
         centerTitle: true,
         title: Text(
-          'Jelajah Trivia Nusantara',
+          'Mini Game',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -141,6 +60,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
           ),
         ),
         actions: [
+          // Tampilan total koin
           Container(
             margin: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -152,14 +72,11 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.monetization_on_rounded,
-                  size: 14,
-                  color: AppColors.accentGold,
-                ),
+                const Icon(Icons.monetization_on_rounded,
+                    size: 14, color: AppColors.accentGold),
                 const SizedBox(width: 4),
                 Text(
-                  '$_score Poin',
+                  '$_totalCoins Koin',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -172,250 +89,351 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Progress Bar
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Pertanyaan ${_currentQuestionIndex + 1} dari ${_questions.length}',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  Text(
-                    '+100 Poin',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryGreen,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (_currentQuestionIndex + 1) / _questions.length,
-                  minHeight: 6,
-                  backgroundColor: AppColors.borderLight,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    AppColors.primaryGreen,
-                  ),
+              // Statistik game
+              _buildStatsCard(),
+              const SizedBox(height: 24),
+
+              Text(
+                'LokaCatch',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Mainkan LokaCatch untuk mendapatkan koin & voucher!',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Game Card: LokaCatch (Gyroscope)
+              _buildGameCard(
+                title: 'LokaCatch',
+                subtitle: 'Kendali Gyroscope',
+                description:
+                    'Miringkan HP untuk menangkap 10 bahan kuliner Nusantara. Hindari bom! Menangkan hingga 50 koin.',
+                emoji: '🧺',
+                badge: 'GYROSCOPE',
+                badgeColor: AppColors.primaryGreen,
+                isNew: true,
+                reward: '+50 Koin',
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LokaCatchScreen(),
+                    ),
+                  );
+                  // Reload stats setelah kembali dari game
+                  _loadStats();
+                },
               ),
 
               const SizedBox(height: 24),
 
-              // Question Box
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.pureWhite,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: AppColors.borderLight,
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceCream,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'WISATA & SEJARAH',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryGreen,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      q['question'],
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ),
+              // Klaim voucher
+              _buildVoucherSection(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Kartu statistik game pemain
+  Widget _buildStatsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreen,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withValues(alpha: 0.3),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('🪙', '$_totalCoins', 'Total Koin'),
+          _buildStatDivider(),
+          _buildStatItem('🎮', '$_totalSessions', 'Sesi Main'),
+          _buildStatDivider(),
+          _buildStatItem('🏆', '$_highScore', 'High Score'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String emoji, String value, String label) {
+    return Column(
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 20)),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            color: Colors.white60,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatDivider() {
+    return Container(
+      height: 40,
+      width: 1,
+      color: Colors.white24,
+    );
+  }
+
+  /// Kartu game LokaCatch dengan desain premium
+  Widget _buildGameCard({
+    required String title,
+    required String subtitle,
+    required String description,
+    required String emoji,
+    required String badge,
+    required Color badgeColor,
+    required bool isNew,
+    required String reward,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.pureWhite,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.borderLight),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Emoji icon
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceCream,
+                borderRadius: BorderRadius.circular(16),
               ),
-
-              const SizedBox(height: 20),
-
-              // Options List
-              Expanded(
-                child: ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: (q['options'] as List<String>).length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final optionText = q['options'][index];
-                    final isCorrect = index == q['correctIndex'];
-                    final isSelected = _selectedAnswerIndex == index;
-
-                    Color bgColor = AppColors.pureWhite;
-                    Color borderColor = AppColors.borderLight;
-                    Color textColor = AppColors.textDark;
-
-                    if (_answered) {
-                      if (isCorrect) {
-                        bgColor = AppColors.badgeGreenBg;
-                        borderColor = AppColors.primaryGreen;
-                        textColor = AppColors.primaryGreen;
-                      } else if (isSelected) {
-                        bgColor = const Color(0xFFFFEBEE);
-                        borderColor = const Color(0xFFEF5350);
-                        textColor = const Color(0xFFC62828);
-                      }
-                    }
-
-                    return InkWell(
-                      onTap: () => _handleOptionSelect(index),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bgColor,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: borderColor, width: 1.5),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: isSelected && _answered
-                                    ? borderColor
-                                    : AppColors.surfaceCream,
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                String.fromCharCode(65 + index),
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected && _answered
-                                      ? Colors.white
-                                      : AppColors.textDark,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                optionText,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: textColor,
-                                ),
-                              ),
-                            ),
-                            if (_answered && isCorrect)
-                              const Icon(
-                                Icons.check_circle_rounded,
-                                color: AppColors.primaryGreen,
-                                size: 20,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 32)),
               ),
-
-              // Fact box & Next button
-              if (_answered) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceCream,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
+            ),
+            const SizedBox(width: 14),
+            // Info game
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      const Icon(
-                        Icons.lightbulb_outline_rounded,
-                        color: AppColors.accentGold,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          q['fact'],
+                          title,
                           style: GoogleFonts.plusJakartaSans(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                            height: 1.35,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      if (isNew)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'BARU',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: badgeColor,
                           ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentGoldLight,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.monetization_on_rounded,
+                                size: 12, color: AppColors.accentGold),
+                            const SizedBox(width: 4),
+                            Text(
+                              reward,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryGreen,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Mainkan ▶',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Bagian klaim voucher berdasarkan koin yang dimiliki
+  Widget _buildVoucherSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.accentGoldLight,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.accentGold.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Text('🎫', style: TextStyle(fontSize: 32)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tukar Koin dengan Voucher',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
                 ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _nextQuestion,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      foregroundColor: AppColors.pureWhite,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                    child: Text(
-                      _currentQuestionIndex < _questions.length - 1
-                          ? 'Pertanyaan Selanjutnya'
-                          : 'Selesai & Lihat Hadiah',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                Text(
+                  'Kumpulkan koin dari LokaCatch untuk mendapatkan voucher wisata eksklusif!',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
                   ),
                 ),
               ],
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VoucherScreen()),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentGold,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            child: Text(
+              'Klaim',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -44,6 +44,16 @@ dependencies:
   local_auth: ^3.0.2
   sqflite_common_ffi_web: ^1.2.0
 
+  # --- Dependensi Fitur Baru ---
+  # Gyroscope & sensor perangkat untuk LokaCatch game
+  sensors_plus: ^6.1.1
+  # HTTP client untuk mengambil kurs mata uang dari API
+  http: ^1.4.0
+  # State management (Provider) untuk CurrencyProvider
+  provider: ^6.1.5
+  # Internasionalisasi & format tanggal/waktu
+  intl: ^0.20.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

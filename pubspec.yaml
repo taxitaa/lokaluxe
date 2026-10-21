@@ -53,6 +53,9 @@ dependencies:
   provider: ^6.1.5
   # Internasionalisasi & format tanggal/waktu
   intl: ^0.20.2
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

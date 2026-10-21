@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../auth/login_screen.dart';
 import '../location/location_picker_modal.dart';
 import '../splash/splash_screen.dart';
+import 'security_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -236,6 +237,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: Icons.security_rounded,
                       title: 'Security & biometrics',
                       subtitle: 'PIN, fingerprint and Face ID',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SecurityScreen()),
+                      ),
                     ),
                   ],
                 ),

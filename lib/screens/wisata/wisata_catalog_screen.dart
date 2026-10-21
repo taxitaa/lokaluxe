@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/database/db_helper.dart';
 import '../../core/services/currency_provider.dart';
+
 import 'package:google_fonts/google_fonts.dart';
 
 class WisataCatalogScreen extends StatefulWidget {
   // Kalau diisi, dipanggil saat user menekan "Pilih" (misal untuk itinerary/budget)
   final void Function(Map<String, dynamic> wisata)? onSelectWisata;
+  final String? initialDestination;
 
-  const WisataCatalogScreen({super.key, this.onSelectWisata});
+  const WisataCatalogScreen({
+    super.key,
+    this.onSelectWisata,
+    this.initialDestination,
+  });
 
   @override
   State<WisataCatalogScreen> createState() => _WisataCatalogScreenState();
@@ -25,6 +32,8 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
   @override
   void initState() {
     super.initState();
+    _query = widget.initialDestination ?? '';
+    _searchController.text = _query;
     _future = DBHelper.getWisata();
   }
 
@@ -97,7 +106,10 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
       appBar: AppBar(
         title: Text(
           'Indonesian Attractions',
-          style: GoogleFonts.playfairDisplay(color: Color(0xFF1A1A1A), fontWeight: FontWeight.bold),
+          style: GoogleFonts.playfairDisplay(
+            color: Color(0xFF1A1A1A),
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -107,7 +119,9 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: _green));
+            return const Center(
+              child: CircularProgressIndicator(color: _green),
+            );
           }
           if (snapshot.hasError) {
             return Center(
@@ -127,24 +141,26 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
           }
 
           // Daftar kategori unik (sudah dirapikan)
-          final kategoriList = semua
-              .map((e) => _rapikan((e['kategori'] ?? '').toString()))
-              .where((k) => k.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
+          final kategoriList =
+              semua
+                  .map((e) => _rapikan((e['kategori'] ?? '').toString()))
+                  .where((k) => k.isNotEmpty)
+                  .toSet()
+                  .toList()
+                ..sort();
 
           // Terapkan filter pencarian + kategori
-          final q = _query.toLowerCase();
+          final q = _query.trim().toLowerCase();
+          final queryTerms = q.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
           final hasil = semua.where((e) {
             final nama = (e['nama_wisata'] ?? '').toString().toLowerCase();
             final kota = (e['kota_kabupaten'] ?? '').toString().toLowerCase();
             final prov = (e['provinsi'] ?? '').toString().toLowerCase();
-            final cocokCari = q.isEmpty ||
-                nama.contains(q) ||
-                kota.contains(q) ||
-                prov.contains(q);
-            final cocokKategori = _kategori == null ||
+            final alamat = (e['alamat'] ?? '').toString().toLowerCase();
+            final searchableText = '$nama $kota $prov $alamat';
+            final cocokCari = queryTerms.every(searchableText.contains);
+            final cocokKategori =
+                _kategori == null ||
                 _rapikan((e['kategori'] ?? '').toString()) == _kategori;
             return cocokCari && cocokKategori;
           }).toList();
@@ -247,161 +263,188 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
     return GestureDetector(
       onTap: () => _detail(w),
       child: Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 160,
-            width: double.infinity,
-            child: img.isEmpty
-                ? _fotoKosong()
-                : Image.network(
-                    img,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _fotoKosong(),
-                    loadingBuilder: (c, child, p) => p == null
-                        ? child
-                        : Container(
-                            color: Colors.grey.shade200,
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: _green),
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 160,
+              width: double.infinity,
+              child: img.isEmpty
+                  ? _fotoKosong()
+                  : Image.network(
+                      img,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => _fotoKosong(),
+                      loadingBuilder: (c, child, p) => p == null
+                          ? child
+                          : Container(
+                              color: Colors.grey.shade200,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _green,
+                                ),
+                              ),
                             ),
-                          ),
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (w['nama_wisata'] ?? '').toString(),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (w['nama_wisata'] ?? '').toString(),
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        lokasi,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.black54),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          lokasi,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _green.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      _rapikan((w['kategori'] ?? '').toString()),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _green,
+                      ),
+                    ),
+                  ),
+                  if (_punyaDeskripsi(w['deskripsi'])) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      (w['deskripsi']).toString(),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black87,
+                        height: 1.4,
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    _rapikan((w['kategori'] ?? '').toString()),
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _green),
-                  ),
-                ),
-                if (_punyaDeskripsi(w['deskripsi'])) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    (w['deskripsi']).toString(),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.black87, height: 1.4),
-                  ),
-                ],
-                const Divider(height: 22),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Estimasi biaya / orang',
-                          style: TextStyle(fontSize: 10, color: Colors.black45),
-                        ),
-                        Text(
-                          _harga(_nilaiHarga(w)),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: _green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        OutlinedButton(
-                          onPressed: () => _detail(w),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                          ),
-                          child: const Text(
-                            'Detail',
+                  const Divider(height: 22),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Estimasi biaya / orang',
                             style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.black45,
+                            ),
+                          ),
+                          Text(
+                            _harga(_nilaiHarga(w)),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _green,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => _detail(w),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            child: const Text(
+                              'Detail',
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF1A1A1A)),
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () => _pilih(w),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _green,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                          ),
-                          child: const Text(
-                            'Pilih',
-                            style: TextStyle(
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => _pilih(w),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _green,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
+                            child: const Text(
+                              'Pilih',
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white),
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -410,7 +453,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
     final nama = (w['nama_wisata'] ?? '').toString();
     if (widget.onSelectWisata != null) {
       widget.onSelectWisata!(w);
-      Navigator.pop(context, w);
+      Navigator.pop(context, {...w, 'selectionPrice': _nilaiHarga(w)});
       return;
     }
     ScaffoldMessenger.of(context)
@@ -419,12 +462,15 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
         SnackBar(
           backgroundColor: _green,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           content: Text(
             '$nama dipilih (${_harga(_nilaiHarga(w))} / orang)',
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600),
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       );
@@ -441,8 +487,9 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -479,8 +526,10 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
               const SizedBox(height: 14),
               Text(
                 (w['nama_wisata'] ?? '').toString(),
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -502,15 +551,17 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Estimasi biaya / orang',
-                            style:
-                                TextStyle(fontSize: 11, color: Colors.black54)),
+                        const Text(
+                          'Estimasi biaya / orang',
+                          style: TextStyle(fontSize: 11, color: Colors.black54),
+                        ),
                         Text(
                           _harga(_nilaiHarga(w)),
                           style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: _green),
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: _green,
+                          ),
                         ),
                       ],
                     ),
@@ -523,14 +574,20 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                         backgroundColor: _green,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                       ),
-                      child: const Text('Pilih Wisata Ini',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Pilih Wisata Ini',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -543,9 +600,9 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
   }
 
   Widget _fotoKosong() => Container(
-        color: Colors.grey.shade200,
-        child: const Center(
-          child: Icon(Icons.landscape, size: 40, color: Colors.grey),
-        ),
-      );
+    color: Colors.grey.shade200,
+    child: const Center(
+      child: Icon(Icons.landscape, size: 40, color: Colors.grey),
+    ),
+  );
 }

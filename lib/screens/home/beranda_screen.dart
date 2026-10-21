@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
+import '../../core/models/user_model.dart';
 import '../../core/services/app_strings.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/localization_provider.dart';
 import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/database/db_helper.dart';
+import '../../core/models/trip_model.dart';
 import '../budget/budget_planner_screen.dart';
 import '../destination/destination_detail_screen.dart';
 import '../finance/finance_hub_screen.dart';
@@ -31,12 +35,15 @@ class _BerandaScreenState extends State<BerandaScreen> {
   int _selectedCategoryIndex = 0;
   final TextEditingController _searchController = TextEditingController();
   double? _remainingBudget;
+  TripModel? _activeTrip;
+  UserModel? _currentUser;
   bool _budgetLoadFailed = false;
 
   @override
   void initState() {
     super.initState();
     _loadRemainingBudget();
+    _loadCurrentUser();
   }
 
   @override
@@ -50,9 +57,11 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
   Future<void> _loadRemainingBudget() async {
     try {
+      final trip = await DBHelper.getActiveTrip();
       final remainingBudget = await DBHelper.getRemainingBudget();
       if (!mounted) return;
       setState(() {
+        _activeTrip = trip;
         _remainingBudget = remainingBudget;
         _budgetLoadFailed = false;
       });
@@ -60,16 +69,41 @@ class _BerandaScreenState extends State<BerandaScreen> {
       debugPrint('[BerandaScreen] Could not load remaining budget: $error');
       if (!mounted) return;
       setState(() {
+        _activeTrip = null;
         _remainingBudget = null;
         _budgetLoadFailed = true;
       });
     }
   }
 
+  Future<void> _loadCurrentUser() async {
+    final user = await AuthService.checkSession();
+    if (!mounted) return;
+    setState(() => _currentUser = user);
+  }
+
+  String get _displayName {
+    final name = _currentUser?.fullName.trim();
+    return name == null || name.isEmpty ? 'Traveler' : name;
+  }
+
+  String get _profileInitials {
+    final parts = _displayName
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2);
+    return parts.map((part) => part[0].toUpperCase()).join();
+  }
+
   Future<void> _openBudgetPlanner() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const BudgetPlannerScreen()),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const BudgetPlannerScreen()));
+    await _loadRemainingBudget();
+  }
+
+  Future<void> _openItinerary() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ItineraryScreen()));
     await _loadRemainingBudget();
   }
 
@@ -125,19 +159,25 @@ class _BerandaScreenState extends State<BerandaScreen> {
                             // Pill lokasi
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.pureWhite,
                                 borderRadius: BorderRadius.circular(14),
                                 boxShadow: _softShadow(0.05),
                                 border: Border.all(
-                                    color: AppColors.borderLight, width: 1),
+                                  color: AppColors.borderLight,
+                                  width: 1,
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(loc.flag,
-                                      style: const TextStyle(fontSize: 13)),
+                                  Text(
+                                    loc.flag,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
                                   const SizedBox(width: 5),
                                   Text(
                                     '${loc.city}, ${loc.countryCode}',
@@ -149,9 +189,10 @@ class _BerandaScreenState extends State<BerandaScreen> {
                                   ),
                                   const SizedBox(width: 2),
                                   const Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      size: 15,
-                                      color: AppColors.textSecondary),
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 15,
+                                    color: AppColors.textSecondary,
+                                  ),
                                 ],
                               ),
                             ),
@@ -178,8 +219,11 @@ class _BerandaScreenState extends State<BerandaScreen> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            const Icon(Icons.notifications_none_rounded,
-                                size: 20, color: AppColors.textDark),
+                            const Icon(
+                              Icons.notifications_none_rounded,
+                              size: 20,
+                              color: AppColors.textDark,
+                            ),
                             Positioned(
                               top: 8,
                               right: 9,
@@ -205,15 +249,20 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                                color: AppColors.accentGold, width: 1.5),
+                              color: AppColors.accentGold,
+                              width: 1.5,
+                            ),
                             color: AppColors.primaryGreen,
                           ),
                           alignment: Alignment.center,
-                          child: const Text('AMALIA',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold)),
+                          child: Text(
+                            _profileInitials,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -225,7 +274,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
               // 2. Greeting & Tagline — lokalisasi otomatis
               Text(
-                s.greeting.fill({'name': 'Amalia'}),
+                s.greeting.fill({'name': _displayName.split(' ').first}),
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -261,7 +310,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
                 borderRadius: BorderRadius.circular(99),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryGreen,
                     borderRadius: BorderRadius.circular(99),
@@ -272,7 +323,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       const Text('💰', style: TextStyle(fontSize: 13)),
                       const SizedBox(width: 6),
                       Text(
-                        '${s.budgetRemaining} ',
+                        _activeTrip == null
+                            ? 'Trip budget '
+                            : '${s.budgetRemaining} ',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -282,10 +335,13 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       Text(
                         _budgetLoadFailed
                             ? 'Unavailable'
+                            : _activeTrip == null
+                            ? 'Atur sekarang'
                             : _remainingBudget == null
-                                ? '...'
-                                : currencyProvider
-                                    .convertAndFormat(_remainingBudget!),
+                            ? '...'
+                            : currencyProvider.convertAndFormat(
+                                _remainingBudget!,
+                              ),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -293,12 +349,26 @@ class _BerandaScreenState extends State<BerandaScreen> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right_rounded,
-                          size: 16, color: AppColors.accentGold),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: AppColors.accentGold,
+                      ),
                     ],
                   ),
                 ),
               ),
+              if (_activeTrip != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Total budget: ${currencyProvider.convertAndFormat(_activeTrip!.targetBudget)}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 18),
 
@@ -316,16 +386,24 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       child: TextField(
                         controller: _searchController,
                         style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13, color: AppColors.textDark),
+                          fontSize: 13,
+                          color: AppColors.textDark,
+                        ),
                         decoration: InputDecoration(
                           hintText: s.searchHint,
                           hintStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 13, color: AppColors.textMuted),
-                          prefixIcon: const Icon(Icons.search_rounded,
-                              size: 20, color: AppColors.textSecondary),
+                            fontSize: 13,
+                            color: AppColors.textMuted,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            size: 20,
+                            color: AppColors.textSecondary,
+                          ),
                           border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 13),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 13,
+                          ),
                         ),
                       ),
                     ),
@@ -338,8 +416,11 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       color: AppColors.primaryGreen,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.tune_rounded,
-                        size: 20, color: AppColors.accentGold),
+                    child: const Icon(
+                      Icons.tune_rounded,
+                      size: 20,
+                      color: AppColors.accentGold,
+                    ),
                   ),
                 ],
               ),
@@ -354,13 +435,13 @@ class _BerandaScreenState extends State<BerandaScreen> {
                     icon: Icons.calculate_outlined,
                     label: 'Budget Trip',
                     color: AppColors.primaryGreen,
-                    onTap: () => _open(const BudgetPlannerScreen()),
+                    onTap: _openBudgetPlanner,
                   ),
                   _buildQuickAction(
                     icon: Icons.route_outlined,
                     label: 'Itinerary',
                     color: AppColors.accentGold,
-                    onTap: () => _open(const ItineraryScreen()),
+                    onTap: _openItinerary,
                   ),
                   _buildQuickAction(
                     icon: Icons.sports_esports_outlined,
@@ -433,14 +514,19 @@ class _BerandaScreenState extends State<BerandaScreen> {
                     return InkWell(
                       onTap: () {
                         setState(() => _selectedCategoryIndex = index);
-                        if (index == 0) _open(const HotelCatalogScreen());
-                        else if (index == 1) _open(const TransportCatalogScreen());
-                        else if (index == 2) _open(const WisataCatalogScreen());
+                        if (index == 0)
+                          _open(const HotelCatalogScreen());
+                        else if (index == 1)
+                          _open(const TransportCatalogScreen());
+                        else if (index == 2)
+                          _open(const WisataCatalogScreen());
                       },
                       borderRadius: BorderRadius.circular(99),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: isSelected
                               ? AppColors.primaryGreen
@@ -450,8 +536,10 @@ class _BerandaScreenState extends State<BerandaScreen> {
                         ),
                         child: Row(
                           children: [
-                            Text(categories[index]['icon']!,
-                                style: const TextStyle(fontSize: 13)),
+                            Text(
+                              categories[index]['icon']!,
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               categories[index]['name']!,
@@ -491,13 +579,15 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       price: currencyProvider.convertAndFormat(1250000),
                       badgeText: s.topChoice,
                       perUnit: s.perPerson,
-                      onTap: () => _open(DestinationDetailScreen(
-                        title: 'Riata Bridge & Tanah Lot',
-                        location: 'Tabanan, Bali',
-                        imagePath: 'assets/images/dest_tanahlot.jpg',
-                        price: currencyProvider.convertAndFormat(1250000),
-                        rating: '4.9',
-                      )),
+                      onTap: () => _open(
+                        DestinationDetailScreen(
+                          title: 'Riata Bridge & Tanah Lot',
+                          location: 'Tabanan, Bali',
+                          imagePath: 'assets/images/dest_tanahlot.jpg',
+                          price: currencyProvider.convertAndFormat(1250000),
+                          rating: '4.9',
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 14),
                     _buildTourCard(
@@ -508,13 +598,15 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       price: currencyProvider.convertAndFormat(750000),
                       badgeText: 'Popular',
                       perUnit: s.perPerson,
-                      onTap: () => _open(DestinationDetailScreen(
-                        title: 'Candi Borobudur Sunrise',
-                        location: 'Magelang, Jawa Tengah',
-                        imagePath: 'assets/images/dest_borobudur.jpg',
-                        price: currencyProvider.convertAndFormat(750000),
-                        rating: '4.8',
-                      )),
+                      onTap: () => _open(
+                        DestinationDetailScreen(
+                          title: 'Candi Borobudur Sunrise',
+                          location: 'Magelang, Jawa Tengah',
+                          imagePath: 'assets/images/dest_borobudur.jpg',
+                          price: currencyProvider.convertAndFormat(750000),
+                          rating: '4.8',
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -526,13 +618,15 @@ class _BerandaScreenState extends State<BerandaScreen> {
               _sectionHeader(s.popularIn, s.topChoice),
               const SizedBox(height: 12),
               InkWell(
-                onTap: () => _open(DestinationDetailScreen(
-                  title: 'Nusa Penida Island Tour',
-                  location: 'Klungkung, Bali',
-                  imagePath: 'assets/images/dest_nusapenida.jpg',
-                  price: currencyProvider.convertAndFormat(650000),
-                  rating: '4.9',
-                )),
+                onTap: () => _open(
+                  DestinationDetailScreen(
+                    title: 'Nusa Penida Island Tour',
+                    location: 'Klungkung, Bali',
+                    imagePath: 'assets/images/dest_nusapenida.jpg',
+                    price: currencyProvider.convertAndFormat(650000),
+                    rating: '4.9',
+                  ),
+                ),
                 borderRadius: BorderRadius.circular(24),
                 child: Container(
                   padding: const EdgeInsets.all(12),
@@ -561,7 +655,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.accentGoldLight,
                                 borderRadius: BorderRadius.circular(99),
@@ -588,8 +684,11 @@ class _BerandaScreenState extends State<BerandaScreen> {
                             const SizedBox(height: 3),
                             Row(
                               children: [
-                                const Icon(Icons.star_rounded,
-                                    size: 14, color: AppColors.starGold),
+                                const Icon(
+                                  Icons.star_rounded,
+                                  size: 14,
+                                  color: AppColors.starGold,
+                                ),
                                 const SizedBox(width: 3),
                                 Text(
                                   '4.9 (425 reviews) • 1 ${s.perDay.replaceAll('/', '').trim()}',
@@ -639,62 +738,67 @@ class _BerandaScreenState extends State<BerandaScreen> {
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   List<BoxShadow> _softShadow(double alpha) => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: alpha),
-          blurRadius: 24,
-          offset: const Offset(0, 8),
-        ),
-      ];
+    BoxShadow(
+      color: Colors.black.withValues(alpha: alpha),
+      blurRadius: 24,
+      offset: const Offset(0, 8),
+    ),
+  ];
 
   Widget _sectionHeader(String title, String action) => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              )),
-          Text(action,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accentGold,
-              )),
-        ],
-      );
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        title,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+        ),
+      ),
+      Text(
+        action,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.accentGold,
+        ),
+      ),
+    ],
+  );
 
   Widget _buildQuickAction({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback onTap,
-  }) =>
-      InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.pureWhite,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: _softShadow(0.06),
-              ),
-              child: Icon(icon, size: 24, color: color),
-            ),
-            const SizedBox(height: 6),
-            Text(label,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                )),
-          ],
+  }) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(20),
+    child: Column(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppColors.pureWhite,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: _softShadow(0.06),
+          ),
+          child: Icon(icon, size: 24, color: color),
         ),
-      );
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildTourCard({
     required String imagePath,
@@ -705,132 +809,151 @@ class _BerandaScreenState extends State<BerandaScreen> {
     required String badgeText,
     required String perUnit,
     required VoidCallback onTap,
-  }) =>
-      InkWell(
-        onTap: onTap,
+  }) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(24),
+    child: Container(
+      width: 210,
+      decoration: BoxDecoration(
+        color: AppColors.pureWhite,
         borderRadius: BorderRadius.circular(24),
-        child: Container(
-          width: 210,
-          decoration: BoxDecoration(
-            color: AppColors.pureWhite,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: _softShadow(0.06),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        boxShadow: _softShadow(0.06),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
             children: [
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(24)),
-                    child: SizedBox(
-                      height: 120,
-                      width: double.infinity,
-                      child: Image.asset(imagePath, fit: BoxFit.cover),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryGreen.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star_rounded,
-                              size: 13, color: AppColors.starGold),
-                          const SizedBox(width: 3),
-                          Text(rating,
-                              style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                child: SizedBox(
+                  height: 120,
+                  width: double.infinity,
+                  child: Image.asset(imagePath, fit: BoxFit.cover),
+                ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryGreen.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 13,
+                        color: AppColors.starGold,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        rating,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
+                          fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        )),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on_rounded,
-                            size: 11, color: AppColors.textSecondary),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(location,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10,
-                                  color: AppColors.textSecondary)),
+                          color: Colors.white,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text('$price $perUnit',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textDark,
-                              )),
-                        ),
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentGoldLight,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(badgeText,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textDark,
-                              )),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-      );
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_rounded,
+                      size: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 2),
+                    Expanded(
+                      child: Text(
+                        location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$price $perUnit',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentGoldLight,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   // ─── Currency Badge / Toggle ──────────────────────────────────────────────
 
-  Widget _buildCurrencyBadge(
-    String currency,
-    String symbol,
-  ) {
+  Widget _buildCurrencyBadge(String currency, String symbol) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(

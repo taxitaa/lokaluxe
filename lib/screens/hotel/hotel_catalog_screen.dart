@@ -11,11 +11,13 @@ import '../../core/theme/app_colors.dart';
 class HotelCatalogScreen extends StatefulWidget {
   final Function(HotelModel hotel)? onSelectHotel;
   final bool selectMode;
+  final String? initialDestination;
 
   const HotelCatalogScreen({
     super.key,
     this.onSelectHotel,
     this.selectMode = false,
+    this.initialDestination,
   });
 
   @override
@@ -47,6 +49,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.text = widget.initialDestination ?? '';
     _refreshHotels();
   }
 
@@ -82,17 +85,14 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
 
   void _applyFilterAndSort() {
     final query = _searchController.text.trim().toLowerCase();
+    final queryTerms = query.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
 
     List<HotelModel> result = _allHotels.where((hotel) {
-      // 1. Text Search Filter (name, city, province, address)
-      if (query.isNotEmpty) {
-        final matchName = hotel.name.toLowerCase().contains(query);
-        final matchCity = hotel.city.toLowerCase().contains(query);
-        final matchProvince = hotel.province.toLowerCase().contains(query);
-        final matchAddress = hotel.address.toLowerCase().contains(query);
-        if (!matchName && !matchCity && !matchProvince && !matchAddress) {
-          return false;
-        }
+      final searchableText =
+          '${hotel.name} ${hotel.city} ${hotel.province} ${hotel.address}'
+              .toLowerCase();
+      if (!queryTerms.every(searchableText.contains)) {
+        return false;
       }
 
       // 2. Region / Island Filter

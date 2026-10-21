@@ -15,9 +15,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController =
-      TextEditingController(text: 'amalia@localluxe.id');
+      TextEditingController(text: '');
   final TextEditingController _passwordController =
-      TextEditingController(text: 'password123');
+      TextEditingController(text: '');
   bool _obscurePassword = true;
 
   @override
@@ -28,23 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   bool _isLoading = false;
-  bool _isBiometricLoading = false;
+  bool _isFingerprintLoading = false;
+  bool _isFaceLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadLastEmail();
-  }
-
-  Future<void> _loadLastEmail() async {
-    final lastEmail = await SessionService.getLastLoggedInEmail();
-    if (lastEmail != null && lastEmail.isNotEmpty && mounted) {
-      setState(() {
-        _emailController.text = lastEmail;
-      });
-    }
-  }
-
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -74,7 +61,6 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -118,20 +104,38 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _handleBiometricLogin() async {
-    setState(() => _isBiometricLoading = true);
+  Future<void> _handleBiometricLogin({String? method}) async {
+    setState(() {
+      if (method == 'face') {
+        _isFaceLoading = true;
+      } else {
+        _isFingerprintLoading = true;
+      }
+    });
 
-    final result = await AuthService.loginWithBiometrics();
+    final inputEmail = _emailController.text.trim();
+    final result = await AuthService.loginWithBiometrics(
+      email: inputEmail.isNotEmpty ? inputEmail : null,
+      method: method,
+    );
 
     if (!mounted) return;
-    setState(() => _isBiometricLoading = false);
+    setState(() {
+      _isFingerprintLoading = false;
+      _isFaceLoading = false;
+    });
 
     if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.fingerprint_rounded, color: Colors.white),
+              Icon(
+                method == 'face'
+                    ? Icons.face_rounded
+                    : Icons.fingerprint_rounded,
+                color: Colors.white,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -320,15 +324,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 24),
 
               // Email Input Field
-              Text(
-                'Your email',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
               TextField(
                 controller: _emailController,
                 style: GoogleFonts.plusJakartaSans(
@@ -339,6 +334,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
+                  labelText: 'Masukkan email Anda',
+                  floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  labelStyle: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                  floatingLabelStyle: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -357,11 +364,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIconConstraints: const BoxConstraints(
                     minWidth: 36,
                     minHeight: 0,
-                  ),
-                  suffixIcon: const Icon(
-                    Icons.check_circle_rounded,
-                    size: 18,
-                    color: AppColors.successGreen,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -383,15 +385,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 18),
 
               // Password Input Field
-              Text(
-                'Password',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
               TextField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -403,6 +396,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
+                  labelText: 'Masukkan password Anda',
+                  floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  labelStyle: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                  floatingLabelStyle: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -438,29 +443,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderSide: const BorderSide(
                       color: AppColors.primaryGreen,
                       width: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Lupa Kata Sandi
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {},
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Forgot password?',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryGreen,
                     ),
                   ),
                 ),
@@ -528,56 +510,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 16),
 
-              // 3 Quick Login Icons
+              // Quick Login Icons (Sidik Jari dan Face ID)
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Tombol Sidik Jari (Fingerprint)
                   _buildQuickLoginButton(
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFEA4335),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'G',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Google sign-in is coming soon.'),
-                          backgroundColor: AppColors.primaryGreen,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  _buildQuickLoginButton(
-                    child: const Icon(
-                      Icons.apple,
-                      size: 22,
-                      color: AppColors.textDark,
-                    ),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Fitur masuk dengan Apple ID segera hadir'),
-                          backgroundColor: AppColors.primaryGreen,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  _buildQuickLoginButton(
-                    child: _isBiometricLoading
+                    child: _isFingerprintLoading
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -591,7 +530,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             size: 22,
                             color: AppColors.primaryGreen,
                           ),
-                    onTap: _handleBiometricLogin,
+                    onTap: () => _handleBiometricLogin(method: 'fingerprint'),
+                  ),
+                  const SizedBox(width: 10),
+                  // Tombol Face ID (Pengenalan Wajah)
+                  _buildQuickLoginButton(
+                    child: _isFaceLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.accentGold,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.face_rounded,
+                            size: 22,
+                            color: AppColors.accentGold,
+                          ),
+                    onTap: () => _handleBiometricLogin(method: 'face'),
                   ),
                 ],
               ),

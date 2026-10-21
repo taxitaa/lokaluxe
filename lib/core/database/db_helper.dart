@@ -12,6 +12,8 @@ import '../security/password_hasher.dart';
 import 'hotel_seed_data.dart';
 import 'transport_seed_data.dart';
 
+enum TripItemSaveResult { saved, budgetExceeded, duplicate, noActiveTrip }
+
 class DBHelper {
   static Database? _database;
 
@@ -34,7 +36,7 @@ class DBHelper {
 
     final db = await openDatabase(
       path,
-      version: 4,
+      version: 6,
       onCreate: (db, version) async {
         // 1. Table Users dengan Enkripsi PBKDF2 / SHA-256 & Salt
         await _createUsersTable(db);
@@ -48,6 +50,8 @@ class DBHelper {
             destinationTitle TEXT,
             dates TEXT,
             duration TEXT,
+            durationDays INTEGER,
+            travelerCount INTEGER,
             currency TEXT,
             targetBudget REAL,
             transportAllocation REAL,
@@ -66,7 +70,8 @@ class DBHelper {
             category TEXT,
             amount REAL,
             date TEXT,
-            isIncome INTEGER
+            isIncome INTEGER,
+            tripId INTEGER
           )
         ''');
 
@@ -84,37 +89,7 @@ class DBHelper {
         // 5. Table Hotels (Database Hotel Se-Indonesia)
         await _createHotelsTable(db);
 
-        // Seed Default Trip (Yogyakarta)
-        await db.insert('trips', {
-          'destination': 'Yogyakarta',
-          'destinationTitle': 'Yogyakarta (DIY)',
-          'dates': '24 Okt - 28 Okt 2026',
-          'duration': '5 Hari, 4 Malam • Rekreasi santai',
-          'currency': 'IDR',
-          'targetBudget': 5000000.0,
-          'transportAllocation': 1750000.0,
-          'hotelAllocation': 1500000.0,
-          'culinaryAllocation': 1000000.0,
-          'activityAllocation': 750000.0,
-          'status': 'active',
-        });
-
-        // Seed Initial Expenses
-        await db.insert('expenses', {
-          'title': 'Kopi Klotok & Pisang Goreng',
-          'category': 'Kuliner',
-          'amount': 25000.0,
-          'date': 'Hari ini • 09:30',
-          'isIncome': 0,
-        });
-
-        await db.insert('expenses', {
-          'title': 'Parkir Area Malioboro',
-          'category': 'Transport',
-          'amount': 15000.0,
-          'date': 'Hari ini • 08:15',
-          'isIncome': 0,
-        });
+        await _createTripItemsTable(db);
 
         // Seed data hotel
         await _seedHotels(db);
@@ -161,6 +136,70 @@ class DBHelper {
             await _seedDefaultUser(db);
           }
         }
+        if (oldVersion < 5) {
+          // Migrasi: tambah kolom biometricEnabled ke tabel users
+          try {
+            final tableInfo = await db.rawQuery('PRAGMA table_info(users)');
+            final hasBiometric =
+                tableInfo.any((c) => c['name'] == 'biometricEnabled');
+            if (!hasBiometric) {
+              await db.execute(
+                'ALTER TABLE users ADD COLUMN biometricEnabled INTEGER DEFAULT 0',
+              );
+            }
+            // Aktifkan untuk akun default demo agar pengguna bisa langsung mencoba fitur biometrik
+            await db.rawUpdate(
+              "UPDATE users SET biometricEnabled = 1 WHERE LOWER(email) = 'amalia@localluxe.id'",
+            );
+          } catch (_) {}
+        }
+        if (oldVersion < 6) {
+          final tripColumns =
+              await db.rawQuery('PRAGMA table_info(trips)');
+          final tripColumnNames =
+              tripColumns.map((column) => column['name']).toSet();
+          if (!tripColumnNames.contains('durationDays')) {
+            await db.execute('ALTER TABLE trips ADD COLUMN durationDays INTEGER');
+          }
+          if (!tripColumnNames.contains('travelerCount')) {
+            await db.execute('ALTER TABLE trips ADD COLUMN travelerCount INTEGER');
+          }
+
+          final expenseColumns =
+              await db.rawQuery('PRAGMA table_info(expenses)');
+          if (!expenseColumns.any((column) => column['name'] == 'tripId')) {
+            await db.execute('ALTER TABLE expenses ADD COLUMN tripId INTEGER');
+          }
+
+          await _createTripItemsTable(db);
+          await db.delete(
+            'trips',
+            where: '''
+              destination = ? AND destinationTitle = ? AND dates = ?
+              AND targetBudget = ? AND status = ?
+            ''',
+            whereArgs: [
+              'Yogyakarta',
+              'Yogyakarta (DIY)',
+              '24 Okt - 28 Okt 2026',
+              5000000.0,
+              'active',
+            ],
+          );
+          await db.delete(
+            'expenses',
+            where: '(title = ? AND category = ? AND amount = ?) OR '
+                '(title = ? AND category = ? AND amount = ?)',
+            whereArgs: [
+              'Kopi Klotok & Pisang Goreng',
+              'Kuliner',
+              25000.0,
+              'Parkir Area Malioboro',
+              'Transport',
+              15000.0,
+            ],
+          );
+        }
       },
     );
 
@@ -186,9 +225,33 @@ class DBHelper {
         passwordHash TEXT NOT NULL,
         salt TEXT NOT NULL,
         currency TEXT,
-        createdAt TEXT
+        createdAt TEXT,
+        biometricEnabled INTEGER DEFAULT 0,
+        fingerprintEnabled INTEGER DEFAULT 0,
+        faceIdEnabled INTEGER DEFAULT 0,
+        securityPin TEXT
       )
     ''');
+    await _ensureUserSecurityColumns(db);
+  }
+
+  static Future<void> _ensureUserSecurityColumns(Database db) async {
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(users)');
+      final colNames = info.map((c) => c['name'].toString()).toSet();
+      if (!colNames.contains('biometricEnabled')) {
+        await db.execute('ALTER TABLE users ADD COLUMN biometricEnabled INTEGER DEFAULT 0');
+      }
+      if (!colNames.contains('fingerprintEnabled')) {
+        await db.execute('ALTER TABLE users ADD COLUMN fingerprintEnabled INTEGER DEFAULT 0');
+      }
+      if (!colNames.contains('faceIdEnabled')) {
+        await db.execute('ALTER TABLE users ADD COLUMN faceIdEnabled INTEGER DEFAULT 0');
+      }
+      if (!colNames.contains('securityPin')) {
+        await db.execute('ALTER TABLE users ADD COLUMN securityPin TEXT');
+      }
+    } catch (_) {}
   }
 
   static Future<void> _seedDefaultUser(Database db) async {
@@ -209,6 +272,7 @@ class DBHelper {
         'salt': salt,
         'currency': 'IDR (Rupiah Indonesia)',
         'createdAt': DateTime.now().toIso8601String(),
+        'biometricEnabled': 1,
       });
     }
   }
@@ -482,12 +546,116 @@ class DBHelper {
     return null;
   }
 
+  /// Memperbarui status biometrik user di SQLite
+  static Future<void> updateUserBiometric(int userId, bool enabled) async {
+    final db = await database;
+    await db.update(
+      'users',
+      {
+        'biometricEnabled': enabled ? 1 : 0,
+        'fingerprintEnabled': enabled ? 1 : 0,
+        'faceIdEnabled': enabled ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  /// Memperbarui pengaturan biometrik & keamanan user (Sidik Jari, Face ID, PIN)
+  static Future<void> updateUserBiometricSettings(
+    int userId, {
+    bool? biometricEnabled,
+    bool? fingerprintEnabled,
+    bool? faceIdEnabled,
+    String? securityPin,
+  }) async {
+    final db = await database;
+    final values = <String, dynamic>{};
+    if (biometricEnabled != null) {
+      values['biometricEnabled'] = biometricEnabled ? 1 : 0;
+    }
+    if (fingerprintEnabled != null) {
+      values['fingerprintEnabled'] = fingerprintEnabled ? 1 : 0;
+      if (fingerprintEnabled) values['biometricEnabled'] = 1;
+    }
+    if (faceIdEnabled != null) {
+      values['faceIdEnabled'] = faceIdEnabled ? 1 : 0;
+      if (faceIdEnabled) values['biometricEnabled'] = 1;
+    }
+    if (securityPin != null) {
+      values['securityPin'] = securityPin;
+    }
+    if (values.isNotEmpty) {
+      await db.update('users', values, where: 'id = ?', whereArgs: [userId]);
+    }
+  }
+
+  /// Mengambil pengaturan biometrik user lengkap
+  static Future<Map<String, dynamic>> getUserSecuritySettings(int userId) async {
+    final db = await database;
+    final res = await db.query(
+      'users',
+      columns: [
+        'biometricEnabled',
+        'fingerprintEnabled',
+        'faceIdEnabled',
+        'securityPin',
+      ],
+      where: 'id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (res.isNotEmpty) {
+      final row = res.first;
+      final bio = (row['biometricEnabled'] as int? ?? 0) == 1;
+      final fp = (row['fingerprintEnabled'] as int? ?? (bio ? 1 : 0)) == 1;
+      final face = (row['faceIdEnabled'] as int? ?? (bio ? 1 : 0)) == 1;
+      return {
+        'biometricEnabled': bio || fp || face,
+        'fingerprintEnabled': fp,
+        'faceIdEnabled': face,
+        'securityPin': row['securityPin'] as String?,
+      };
+    }
+    return {
+      'biometricEnabled': false,
+      'fingerprintEnabled': false,
+      'faceIdEnabled': false,
+      'securityPin': null,
+    };
+  }
+
+  /// Mengambil status biometrik user dari SQLite
+  static Future<bool> getUserBiometricStatus(int userId) async {
+    final settings = await getUserSecuritySettings(userId);
+    return (settings['biometricEnabled'] == true) ||
+        (settings['fingerprintEnabled'] == true) ||
+        (settings['faceIdEnabled'] == true);
+  }
+
   // --- TRIP & BUDGET OPERATIONS ---
   static Future<int> saveTrip(TripModel trip) async {
     final db = await database;
     await db.update('trips', {'status': 'archived'},
         where: 'status = ?', whereArgs: ['active']);
     return await db.insert('trips', trip.toMap());
+  }
+
+  static Future<void> _createTripItemsTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS trip_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tripId INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        unitPrice REAL NOT NULL,
+        quantity INTEGER NOT NULL,
+        totalCost REAL NOT NULL,
+        plannedDate TEXT NOT NULL,
+        FOREIGN KEY (tripId) REFERENCES trips(id)
+      )
+    ''');
   }
 
   static Future<TripModel?> getActiveTrip() async {
@@ -525,9 +693,11 @@ class DBHelper {
     if (trip == null) {
       await db.insert('trips', {
         'destination': '',
-        'destinationTitle': 'My Trip',
+        'destinationTitle': '',
         'dates': '',
         'duration': '',
+        'durationDays': null,
+        'travelerCount': null,
         'currency': 'IDR',
         ...budgetFields,
         'status': 'active',
@@ -549,10 +719,145 @@ class DBHelper {
     }
   }
 
+  static Future<void> updateActiveTripDetails({
+    required String destination,
+    required DateTime startDate,
+    required int durationDays,
+    required int travelerCount,
+  }) async {
+    final db = await database;
+    final trip = await getActiveTrip();
+    if (trip?.id == null) {
+      throw StateError('Create and save a trip budget before trip details.');
+    }
+    final updatedRows = await db.update(
+      'trips',
+      {
+        'destination': destination,
+        'destinationTitle': destination,
+        'dates': startDate.toIso8601String(),
+        'duration': '$durationDays hari',
+        'durationDays': durationDays,
+        'travelerCount': travelerCount,
+      },
+      where: 'id = ?',
+      whereArgs: [trip!.id],
+    );
+    if (updatedRows == 0) {
+      throw StateError('Trip details could not be saved.');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getActiveTripItems({
+    DateTime? plannedDate,
+  }) async {
+    final trip = await getActiveTrip();
+    if (trip?.id == null) return [];
+
+    final db = await database;
+    return db.query(
+      'trip_items',
+      where: plannedDate == null
+          ? 'tripId = ?'
+          : 'tripId = ? AND plannedDate = ?',
+      whereArgs: plannedDate == null
+          ? [trip!.id]
+          : [trip!.id, _dateOnly(plannedDate)],
+      orderBy: 'id ASC',
+    );
+  }
+
+  static Future<void> deleteActiveTripItem(int itemId) async {
+    final trip = await getActiveTrip();
+    if (trip?.id == null) {
+      throw StateError('There is no active trip to update.');
+    }
+
+    final db = await database;
+    final deletedRows = await db.delete(
+      'trip_items',
+      where: 'id = ? AND tripId = ?',
+      whereArgs: [itemId, trip!.id],
+    );
+    if (deletedRows == 0) {
+      throw StateError('The itinerary item could not be found.');
+    }
+  }
+
+  static Future<TripItemSaveResult> insertActiveTripItem({
+    required String title,
+    required String category,
+    required String location,
+    required double unitPrice,
+    required int quantity,
+    required DateTime plannedDate,
+  }) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final trips = await txn.query(
+        'trips',
+        where: 'status = ?',
+        whereArgs: ['active'],
+        orderBy: 'id DESC',
+        limit: 1,
+      );
+      if (trips.isEmpty) return TripItemSaveResult.noActiveTrip;
+
+      final trip = TripModel.fromMap(trips.first);
+      if (trip.id == null) return TripItemSaveResult.noActiveTrip;
+
+      final duplicates = await txn.query(
+        'trip_items',
+        columns: ['id'],
+        where: 'tripId = ? AND title = ? AND category = ? AND plannedDate = ?',
+        whereArgs: [trip.id, title, category, _dateOnly(plannedDate)],
+        limit: 1,
+      );
+      if (duplicates.isNotEmpty) return TripItemSaveResult.duplicate;
+
+      final expenseRows = await txn.rawQuery(
+        'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses '
+        'WHERE tripId = ? AND isIncome = 0',
+        [trip.id],
+      );
+      final itemRows = await txn.rawQuery(
+        'SELECT COALESCE(SUM(totalCost), 0) AS total FROM trip_items '
+        'WHERE tripId = ?',
+        [trip.id],
+      );
+      final spent =
+          (expenseRows.first['total'] as num).toDouble() +
+          (itemRows.first['total'] as num).toDouble();
+      final totalCost = unitPrice * quantity;
+      if (totalCost > trip.targetBudget - spent) {
+        return TripItemSaveResult.budgetExceeded;
+      }
+
+      await txn.insert('trip_items', {
+        'tripId': trip.id,
+        'title': title,
+        'category': category,
+        'location': location,
+        'unitPrice': unitPrice,
+        'quantity': quantity,
+        'totalCost': totalCost,
+        'plannedDate': _dateOnly(plannedDate),
+      });
+      return TripItemSaveResult.saved;
+    });
+  }
+
+  static String _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day).toIso8601String();
+
   // --- EXPENSE OPERATIONS ---
   static Future<int> insertExpense(ExpenseModel expense) async {
     final db = await database;
-    return await db.insert('expenses', expense.toMap());
+    final trip = await getActiveTrip();
+    return await db.insert('expenses', {
+      ...expense.toMap(),
+      'tripId': trip?.id,
+    });
   }
 
   static Future<List<ExpenseModel>> getExpenses() async {
@@ -563,17 +868,26 @@ class DBHelper {
 
   static Future<double> getTotalExpenses() async {
     final db = await database;
-    final res = await db.rawQuery(
-        'SELECT SUM(amount) as total FROM expenses WHERE isIncome = 0');
-    if (res.isNotEmpty && res.first['total'] != null) {
-      return (res.first['total'] as num).toDouble();
-    }
-    return 0.0;
+    final trip = await getActiveTrip();
+    if (trip?.id == null) return 0.0;
+    final expenses = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses '
+      'WHERE tripId = ? AND isIncome = 0',
+      [trip!.id],
+    );
+    final items = await db.rawQuery(
+      'SELECT COALESCE(SUM(totalCost), 0) AS total FROM trip_items '
+      'WHERE tripId = ?',
+      [trip.id],
+    );
+    return (expenses.first['total'] as num).toDouble() +
+        (items.first['total'] as num).toDouble();
   }
 
   static Future<double> getRemainingBudget() async {
     final trip = await getActiveTrip();
-    final double target = trip?.targetBudget ?? 5000000.0;
+    if (trip == null) return 0.0;
+    final double target = trip.targetBudget;
     final double spent = await getTotalExpenses();
     return target - spent;
   }

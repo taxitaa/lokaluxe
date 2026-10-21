@@ -1,10 +1,18 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:provider/provider.dart';
+import 'package:printing/printing.dart';
 import '../../core/database/db_helper.dart';
-import '../../core/models/expense_model.dart';
+import '../../core/models/trip_model.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
+
+const _plannerAnchorApi = String.fromEnvironment('PLANNER_ANCHOR_API');
 
 class BudgetPlannerScreen extends StatefulWidget {
   const BudgetPlannerScreen({super.key});
@@ -14,20 +22,13 @@ class BudgetPlannerScreen extends StatefulWidget {
 }
 
 class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
-  double _selectedBudget = 5000000;
+  double _selectedBudget = 0;
   double _spent = 0;
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isCustom = false;
-  final TextEditingController _customController = TextEditingController(text: '5000000');
-  final TextEditingController _expenseTitleController = TextEditingController();
-  final TextEditingController _expenseAmountController = TextEditingController();
-
-  // Persentase alokasi AI
-  final double _transportPercent = 35;
-  final double _hotelPercent = 30;
-  final double _kulinerPercent = 20;
-  final double _wisataPercent = 15;
+  TripModel? _trip;
+  List<Map<String, dynamic>> _tripItems = [];
+  final TextEditingController _customController = TextEditingController();
 
   @override
   void initState() {
@@ -38,8 +39,6 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   @override
   void dispose() {
     _customController.dispose();
-    _expenseTitleController.dispose();
-    _expenseAmountController.dispose();
     super.dispose();
   }
 
@@ -47,13 +46,20 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     try {
       final trip = await DBHelper.getActiveTrip();
       final spent = await DBHelper.getTotalExpenses();
+      final items = await DBHelper.getActiveTripItems();
       if (!mounted) return;
       setState(() {
+        _trip = trip;
+        _tripItems = items;
         if (trip != null) {
           _selectedBudget = trip.targetBudget;
-          _customController.text = trip.targetBudget.toStringAsFixed(0);
-          _isCustom = ![2500000.0, 5000000.0, 10000000.0]
-              .contains(trip.targetBudget);
+          _customController.text =
+              context.read<CurrencyProvider>()
+                  .convertRaw(trip.targetBudget)
+                  .toStringAsFixed(0);
+        } else {
+          _selectedBudget = 0;
+          _customController.clear();
         }
         _spent = spent;
         _isLoading = false;
@@ -69,14 +75,28 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   }
 
   Future<void> _saveBudget(CurrencyProvider currencyProvider) async {
+    if (_selectedBudget <= 0 || !(_selectedBudget.isFinite)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan budget yang valid terlebih dahulu.')),
+      );
+      return;
+    }
+    if (_selectedBudget < _spent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Budget tidak boleh lebih kecil dari total pengeluaran trip.'),
+        ),
+      );
+      return;
+    }
     setState(() => _isSaving = true);
     try {
       await DBHelper.updateActiveTripBudget(
         targetBudget: _selectedBudget,
-        transportAllocation: _selectedBudget * (_transportPercent / 100),
-        hotelAllocation: _selectedBudget * (_hotelPercent / 100),
-        culinaryAllocation: _selectedBudget * (_kulinerPercent / 100),
-        activityAllocation: _selectedBudget * (_wisataPercent / 100),
+        transportAllocation: 0,
+        hotelAllocation: 0,
+        culinaryAllocation: 0,
+        activityAllocation: 0,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,161 +118,207 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     }
   }
 
-  Future<void> _recordExpense(CurrencyProvider currencyProvider) async {
-    _expenseTitleController.clear();
-    _expenseAmountController.clear();
-    final expense = await showDialog<ExpenseModel>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Record an expense'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _expenseTitleController,
-              decoration: const InputDecoration(labelText: 'Description'),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            TextField(
-              controller: _expenseAmountController,
-              decoration: InputDecoration(
-                labelText: 'Amount',
-                prefixText: '${currencyProvider.currencySymbol} ',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final title = _expenseTitleController.text.trim();
-              final amount =
-                  double.tryParse(_expenseAmountController.text.trim());
-              if (title.isEmpty ||
-                  amount == null ||
-                  !amount.isFinite ||
-                  amount <= 0) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Enter a description and a valid amount.'),
-                  ),
-                );
-                return;
-              }
-              final rate = currencyProvider.convertRaw(1);
-              if (currencyProvider.selectedCurrency != 'IDR' &&
-                  (rate <= 0 || !rate.isFinite)) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Exchange rate is unavailable. Try again later.',
-                    ),
-                  ),
-                );
-                return;
-              }
-              final amountInIdr = currencyProvider.selectedCurrency == 'IDR'
-                  ? amount
-                  : amount / rate;
-              Navigator.pop(
-                dialogContext,
-                ExpenseModel(
-                  title: title,
-                  category: 'Other',
-                  amount: amountInIdr,
-                  date: DateTime.now().toIso8601String(),
-                ),
-              );
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    if (expense == null) return;
-
-    try {
-      await DBHelper.insertExpense(expense);
-      final spent = await DBHelper.getTotalExpenses();
-      if (mounted) setState(() => _spent = spent);
-    } catch (error) {
-      debugPrint('[BudgetPlannerScreen] Could not record expense: $error');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to record expense.')),
-      );
-    }
-  }
-
-  void _updateBudget(double value, {bool isCustom = false}) {
+  void _updateBudget(double value, CurrencyProvider currencyProvider) {
     setState(() {
-      _selectedBudget = value;
-      _isCustom = isCustom;
-      if (!isCustom) {
-        _customController.text = value.toStringAsFixed(0);
-      }
+      final rate = currencyProvider.convertRaw(1);
+      _selectedBudget =
+          currencyProvider.selectedCurrency == 'IDR' || rate <= 0
+              ? value
+              : value / rate;
     });
   }
 
-  void _showCustomDialog(CurrencyProvider currencyProvider) {
-    _customController.text =
-        currencyProvider.convertRaw(_selectedBudget).toStringAsFixed(0);
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Enter a custom budget', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold)),
-          content: TextField(
-            controller: _customController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              prefixText: '${currencyProvider.currencySymbol} ',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryGreen),
-              onPressed: () {
-                setState(() {
-                  final amount =
-                      double.tryParse(_customController.text) ?? 5000000;
-                  final rate = currencyProvider.convertRaw(1);
-                  _selectedBudget =
-                      currencyProvider.selectedCurrency == 'IDR' || rate <= 0
-                          ? amount
-                          : amount / rate;
-                  _isCustom = true;
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
+  Future<String?> _anchorPlannerHash(String hash) async {
+    if (_plannerAnchorApi.trim().isEmpty) return null;
+
+    final endpoint = Uri.tryParse(_plannerAnchorApi);
+    if (endpoint == null ||
+        !endpoint.hasScheme ||
+        endpoint.scheme != 'https') {
+      throw const FormatException('PLANNER_ANCHOR_API must be an HTTPS URL.');
+    }
+
+    final response = await http.post(
+      endpoint,
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'network': 'ethereum-sepolia',
+        'chainId': 11155111,
+        'contentHash': hash,
+        'idempotencyKey': hash,
+      }),
     );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Backend Sepolia returned HTTP ${response.statusCode}.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['chainId'] != 11155111 ||
+        decoded['contentHash'] != hash ||
+        decoded['confirmed'] != true ||
+        decoded['transactionHash'] is! String ||
+        !RegExp(r'^0x[0-9a-fA-F]{64}$')
+            .hasMatch(decoded['transactionHash'] as String)) {
+      throw const FormatException(
+        'Backend response must confirm the matching hash on Sepolia.',
+      );
+    }
+    return decoded['transactionHash'] as String;
+  }
+
+  Future<void> _exportPlannerPdf(CurrencyProvider currencyProvider) async {
+    setState(() => _isSaving = true);
+    try {
+      final trip = await DBHelper.getActiveTrip();
+      if (!mounted) return;
+      if (trip == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Buat budget trip sebelum menyimpan planner.'),
+          ),
+        );
+        return;
+      }
+      if (_selectedBudget != trip.targetBudget) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Simpan perubahan budget sebelum mengekspor planner.'),
+          ),
+        );
+        return;
+      }
+
+      final spent = await DBHelper.getTotalExpenses();
+      final items = await DBHelper.getActiveTripItems();
+      if (!mounted) return;
+      setState(() {
+        _trip = trip;
+        _spent = spent;
+        _tripItems = items;
+      });
+      final plannerSnapshot = <String, Object?>{
+        'schemaVersion': 1,
+        'network': 'ethereum-sepolia',
+        'tripId': trip.id,
+        'destination': trip.destination,
+        'startDate': trip.dates,
+        'durationDays': trip.durationDays,
+        'travelerCount': trip.travelerCount,
+        'budgetIdr': trip.targetBudget,
+        'spentIdr': spent,
+        'items': items
+            .map(
+              (item) => <String, Object?>{
+                'title': item['title'],
+                'category': item['category'],
+                'location': item['location'],
+                'unitPriceIdr': item['unitPrice'],
+                'quantity': item['quantity'],
+                'totalCostIdr': item['totalCost'],
+                'plannedDate': item['plannedDate'],
+              },
+            )
+            .toList(),
+      };
+      final hash =
+          sha256.convert(utf8.encode(jsonEncode(plannerSnapshot))).toString();
+      final transactionHash = await _anchorPlannerHash(hash);
+      final document = pw.Document();
+      document.addPage(
+        pw.MultiPage(
+          build: (context) => [
+            pw.Text(
+              'LokaLuxe Trip Planner',
+              style: pw.TextStyle(
+                fontSize: 22,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text('Tujuan: ${trip.destination.isEmpty ? "-" : trip.destination}'),
+            pw.Text('Tanggal mulai: ${trip.dates.isEmpty ? "-" : trip.dates}'),
+            pw.Text('Durasi: ${trip.durationDays ?? "-"} hari'),
+            pw.Text('Jumlah orang: ${trip.travelerCount ?? "-"}'),
+            pw.SizedBox(height: 12),
+            pw.Text('Budget: ${currencyProvider.convertAndFormat(trip.targetBudget)}'),
+            pw.Text('Terpakai: ${currencyProvider.convertAndFormat(spent)}'),
+            pw.Text(
+              'Sisa: ${currencyProvider.convertAndFormat(trip.targetBudget - spent)}',
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Rencana perjalanan',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            if (items.isEmpty) pw.Text('Belum ada pilihan itinerary.'),
+            ...items.map(
+              (item) => pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 8),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColors.grey300),
+                  ),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('${item['title']} (${item['category']})'),
+                    pw.Text(
+                      '${item['plannedDate']} · ${item['location']} · '
+                      '${currencyProvider.convertAndFormat((item['totalCost'] as num).toDouble())}',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'Integritas planner',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text('SHA-256: $hash'),
+            pw.Text(
+              transactionHash == null
+                  ? 'Status Sepolia: belum dicatat on-chain. Backend anchor belum dikonfigurasi.'
+                  : 'Jaringan: Ethereum Sepolia (chain ID 11155111)',
+            ),
+            if (transactionHash != null)
+              pw.Text('Transaction hash: $transactionHash'),
+          ],
+        ),
+      );
+
+      await Printing.sharePdf(
+        bytes: await document.save(),
+        filename: 'lokaluxe-trip-planner-${trip.id ?? 'draft'}.pdf',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            transactionHash == null
+                ? 'PDF tersimpan/dibagikan. Hash belum dicatat di Sepolia karena backend belum dikonfigurasi.'
+                : 'PDF planner dibuat dan hash berhasil dicatat di Sepolia.',
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint('[BudgetPlannerScreen] Could not export planner PDF: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal membuat PDF planner: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final currencyProvider = context.watch<CurrencyProvider>();
-    double transportAmount = _selectedBudget * (_transportPercent / 100);
-    double hotelAmount = _selectedBudget * (_hotelPercent / 100);
-    double kulinerAmount = _selectedBudget * (_kulinerPercent / 100);
-    double wisataAmount = _selectedBudget * (_wisataPercent / 100);
-
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -300,22 +366,34 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                   Text('Estimated maximum spend', style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 6),
                   Text(
-                    currencyProvider.convertAndFormat(_selectedBudget),
+                    _selectedBudget > 0
+                        ? currencyProvider.convertAndFormat(_selectedBudget)
+                        : 'Belum ditentukan',
                     style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '💡 Smart allocation is enabled for this trip',
-                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 11),
-                    ),
-                  ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _customController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (value) {
+                final amount = double.tryParse(value.trim());
+                if (amount != null && amount.isFinite && amount > 0) {
+                  _updateBudget(amount, currencyProvider);
+                } else {
+                  setState(() => _selectedBudget = 0);
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'Masukkan budget trip',
+                prefixText: '${currencyProvider.currencySymbol} ',
+                filled: true,
+                fillColor: AppColors.pureWhite,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -343,7 +421,9 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                     _isLoading
                         ? 'Loading...'
                         : currencyProvider
-                            .convertAndFormat(_selectedBudget - _spent),
+                            .convertAndFormat(
+                              (_selectedBudget - _spent).clamp(0, double.infinity),
+                            ),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -358,58 +438,70 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                       color: AppColors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _isLoading ? null : () => _recordExpense(currencyProvider),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Record an expense'),
-                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Pilihan Chip Budget Cepat
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildBudgetChip(currencyProvider.convertAndFormat(2500000), 2500000),
-                _buildBudgetChip(currencyProvider.convertAndFormat(5000000), 5000000),
-                _buildBudgetChip(currencyProvider.convertAndFormat(10000000), 10000000),
-                GestureDetector(
-                  onTap: () => _showCustomDialog(currencyProvider),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: _isCustom ? AppColors.primaryGreen : AppColors.pureWhite,
-                      border: Border.all(color: _isCustom ? AppColors.primaryGreen : AppColors.borderLight),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text('Custom', style: GoogleFonts.plusJakartaSans(color: _isCustom ? Colors.white : AppColors.textDark, fontWeight: FontWeight.bold, fontSize: 12)),
+            if (_tripItems.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text(
+                'DETAIL PENGELUARAN TRIP',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ..._tripItems.map(
+                (item) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.pureWhite,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.borderLight),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['title'].toString(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            Text(
+                              item['category'] == 'Hotel'
+                                  ? 'Hotel · ${item['quantity']} kamar · maks. 2 orang/kamar'
+                                  : '${item['category']} · Qty ${item['quantity']}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        currencyProvider.convertAndFormat(
+                          (item['totalCost'] as num).toDouble(),
+                        ),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            Text('SMART BUDGET ALLOCATION', style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-            const SizedBox(height: 10),
-
-            // Grid Alokasi
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.35,
-              children: [
-                _buildAllocationCard('Transport', '🚗', '${_transportPercent.toInt()}%', currencyProvider.convertAndFormat(transportAmount)),
-                _buildAllocationCard('Accommodation', '🏨', '${_hotelPercent.toInt()}%', currencyProvider.convertAndFormat(hotelAmount)),
-                _buildAllocationCard('Food & cafes', '🍽️', '${_kulinerPercent.toInt()}%', currencyProvider.convertAndFormat(kulinerAmount)),
-                _buildAllocationCard('Activities', '🎫', '${_wisataPercent.toInt()}%', currencyProvider.convertAndFormat(wisataAmount)),
-              ],
-            ),
+              ),
+            ],
             const SizedBox(height: 28),
 
             // Tombol Simpan
@@ -435,9 +527,45 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: _isLoading || _isSaving || _trip == null
+                    ? null
+                    : () => _exportPlannerPdf(currencyProvider),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Simpan planner sebagai PDF'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textDark,
+                  side: BorderSide(
+                    color: AppColors.accentGold.withValues(alpha: 0.7),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _plannerAnchorApi.trim().isEmpty
+                  ? 'Hash SHA-256 dicantumkan di PDF. Pencatatan Sepolia menunggu backend.'
+                  : 'Hash planner akan dikirim ke backend untuk dicatat di Sepolia.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                color: AppColors.textSecondary,
               ),
             ),
           ],
@@ -446,64 +574,4 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     );
   }
 
-  Widget _buildBudgetChip(String label, double value) {
-    bool isSelected = _selectedBudget == value && !_isCustom;
-    return GestureDetector(
-      onTap: () => _updateBudget(value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryGreen : AppColors.pureWhite,
-          border: Border.all(color: isSelected ? AppColors.primaryGreen : AppColors.borderLight),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(label, style: GoogleFonts.plusJakartaSans(color: isSelected ? Colors.white : AppColors.textDark, fontWeight: FontWeight.bold, fontSize: 12)),
-      ),
-    );
-  }
-
-  Widget _buildAllocationCard(String title, String emoji, String percent, String amount) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.pureWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderLight),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 18)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceCream,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(percent, style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryGreen)),
-              ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: GoogleFonts.plusJakartaSans(fontSize: 11, color: AppColors.textSecondary)),
-              const SizedBox(height: 2),
-              Text(amount, style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-extension on double {
-  String toStringAsRegExp() {
-    return toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
-  }
 }

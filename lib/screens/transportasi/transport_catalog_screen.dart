@@ -9,8 +9,13 @@ import '../../core/theme/app_colors.dart';
 class TransportCatalogScreen extends StatefulWidget {
   // Kalau diisi, dipanggil saat user menekan "Pilih" (misal untuk itinerary/budget)
   final void Function(TransportModel transport)? onSelectTransport;
+  final String? initialDestination;
 
-  const TransportCatalogScreen({super.key, this.onSelectTransport});
+  const TransportCatalogScreen({
+    super.key,
+    this.onSelectTransport,
+    this.initialDestination,
+  });
 
   @override
   State<TransportCatalogScreen> createState() => _TransportCatalogScreenState();
@@ -38,6 +43,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.text = widget.initialDestination ?? '';
     _future = _load();
   }
 
@@ -68,14 +74,14 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
 
   List<TransportModel> _hitungFilter() {
     final q = _searchController.text.trim().toLowerCase();
+    final queryTerms = q.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
     final hasil = _all.where((t) {
       if (_selectedType != 'Semua' && t.type != _selectedType) return false;
-      if (q.isNotEmpty) {
-        final cocok = t.name.toLowerCase().contains(q) ||
-            t.route.toLowerCase().contains(q) ||
-            t.province.toLowerCase().contains(q) ||
-            t.operatorName.toLowerCase().contains(q);
-        if (!cocok) return false;
+      final searchableText =
+          '${t.name} ${t.route} ${t.province} ${t.operatorName}'
+              .toLowerCase();
+      if (!queryTerms.every(searchableText.contains)) {
+        return false;
       }
       return true;
     }).toList();

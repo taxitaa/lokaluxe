@@ -4,6 +4,8 @@ class TripModel {
   final String destinationTitle;
   final String dates;
   final String duration;
+  final int? durationDays;
+  final int? travelerCount;
   final String currency;
   final double targetBudget;
   final double transportAllocation;
@@ -18,6 +20,8 @@ class TripModel {
     required this.destinationTitle,
     required this.dates,
     required this.duration,
+    this.durationDays,
+    this.travelerCount,
     this.currency = 'IDR',
     required this.targetBudget,
     required this.transportAllocation,
@@ -34,6 +38,8 @@ class TripModel {
       'destinationTitle': destinationTitle,
       'dates': dates,
       'duration': duration,
+      'durationDays': durationDays,
+      'travelerCount': travelerCount,
       'currency': currency,
       'targetBudget': targetBudget,
       'transportAllocation': transportAllocation,
@@ -51,6 +57,8 @@ class TripModel {
       destinationTitle: map['destinationTitle'] ?? '',
       dates: map['dates'] ?? '',
       duration: map['duration'] ?? '',
+      durationDays: (map['durationDays'] as num?)?.toInt(),
+      travelerCount: (map['travelerCount'] as num?)?.toInt(),
       currency: map['currency'] ?? 'IDR',
       targetBudget: (map['targetBudget'] as num?)?.toDouble() ?? 0.0,
       transportAllocation: (map['transportAllocation'] as num?)?.toDouble() ?? 0.0,

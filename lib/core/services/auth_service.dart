@@ -133,8 +133,10 @@ class AuthService {
           email: user.email,
           fullName: user.fullName,
         );
-        // Aktifkan biometrik untuk akun ini pada login berikutnya
-        await SessionService.setBiometricEnabled(true);
+        // Sinkronisasi SecureStorage dengan preferensi biometrik di SQLite
+        // agar status biometrik tetap konsisten tanpa override pengaturan user
+        final bioEnabled = await DBHelper.getUserBiometricStatus(user.id!);
+        await SessionService.setBiometricEnabled(bioEnabled);
       }
 
       return AuthResult.success(
@@ -146,53 +148,101 @@ class AuthService {
     }
   }
 
-  /// Login cepat menggunakan biometrik (sidik jari / wajah)
-  /// Hanya dapat digunakan setelah login manual pertama berhasil
-  static Future<AuthResult> loginWithBiometrics() async {
+  /// Login cepat menggunakan biometrik dengan akun yang dipilih atau ditautkan.
+  /// Mendukung metode spesifik ('fingerprint' atau 'face').
+  static Future<AuthResult> loginWithBiometrics({
+    String? email,
+    String? method, // 'fingerprint', 'face', atau null untuk otomatis
+  }) async {
     try {
       // 1. Cek dukungan hardware perangkat
       final isSupported = await BiometricService.isBiometricSupported();
       if (!isSupported) {
         return AuthResult.failure(
-          'Perangkat Anda belum mendukung sensor biometrik',
+          'Perangkat Anda belum mendukung sensor biometrik atau belum ada sidik jari/wajah yang terdaftar.',
         );
       }
 
-      // 2. Cek apakah pengguna sudah pernah login manual sebelumnya
-      final isBioEnabled = await SessionService.isBiometricEnabled();
-      final lastEmail = await SessionService.getLastLoggedInEmail();
-
-      if (!isBioEnabled || lastEmail == null || lastEmail.isEmpty) {
+      // 2. Gunakan email yang dipilih, lalu akun biometrik yang telah ditautkan.
+      String? targetEmail = email?.trim().toLowerCase();
+      if (targetEmail == null || targetEmail.isEmpty) {
+        targetEmail = await SessionService.getBiometricAccountEmail();
+      }
+      if (targetEmail == null || targetEmail.isEmpty) {
         return AuthResult.failure(
-          'Silakan masuk dengan email dan kata sandi terlebih dahulu untuk mengaktifkan biometrik',
+          'Akun biometrik belum ditautkan. Masukkan email akun yang ingin digunakan, lalu verifikasi biometrik.',
         );
       }
 
-      // 3. Jalankan dialog sensor sidik jari
+      // 3. Ambil data pengguna dari database berdasarkan email
+      final user = await DBHelper.getUserByEmail(targetEmail);
+      if (user == null || user.id == null) {
+        return AuthResult.failure(
+          'Akun dengan email "$targetEmail" belum terdaftar.',
+        );
+      }
+
+      // 4. Cek pengaturan keamanan pengguna (SQLite / Secure Storage)
+      final settings = await BiometricService.getUserSecuritySettings(user.id!);
+      final isFp = settings['fingerprintEnabled'] == true;
+      final isFace = settings['faceIdEnabled'] == true;
+      final isBio = settings['biometricEnabled'] == true;
+
+      if (method == 'fingerprint') {
+        if (!isFp) {
+          return AuthResult.failure(
+            'Login sidik jari belum diaktifkan untuk akun ini. Silakan aktifkan di menu Profil → Security & Biometrics.',
+          );
+        }
+      } else if (method == 'face') {
+        if (!isFace) {
+          return AuthResult.failure(
+            'Login Face ID belum diaktifkan untuk akun ini. Silakan aktifkan di menu Profil → Security & Biometrics.',
+          );
+        }
+      } else {
+        if (!isBio && !isFp && !isFace) {
+          return AuthResult.failure(
+            'Login biometrik belum diaktifkan untuk akun ini. Silakan masuk dengan kata sandi terlebih dahulu, lalu aktifkan di Profil → Security & Biometrics.',
+          );
+        }
+      }
+
+      // 5. Tentukan pesan dialog biometrik sesuai metode yang dipilih
+      final String reasonText;
+      if (method == 'fingerprint') {
+        reasonText = 'Pindai sidik jari Anda untuk masuk ke akun LokaLuxe';
+      } else if (method == 'face') {
+        reasonText = 'Arahkan wajah Anda ke kamera untuk masuk dengan Face ID';
+      } else {
+        final label = await BiometricService.getBiometricLabel();
+        reasonText = 'Pindai $label Anda untuk masuk ke akun LokaLuxe';
+      }
+
+      // 6. Jalankan dialog sensor biometrik
       final didAuthenticate = await BiometricService.authenticate(
-        reason: 'Pindai sidik jari Anda untuk masuk ke akun LocalLuxe',
+        reason: reasonText,
       );
 
       if (!didAuthenticate) {
-        return AuthResult.failure('Verifikasi biometrik dibatalkan atau gagal');
+        final label = method == 'fingerprint'
+            ? 'Sidik jari'
+            : (method == 'face' ? 'Face ID' : 'Biometrik');
+        return AuthResult.failure('Verifikasi $label dibatalkan atau gagal.');
       }
 
-      // 4. Ambil data pengguna dari database lokal
-      final user = await DBHelper.getUserByEmail(lastEmail);
-      if (user == null || user.id == null) {
-        return AuthResult.failure('Data akun biometrik tidak ditemukan');
-      }
-
-      // 5. Perbarui sesi aktif
+      // 7. Simpan sesi aktif
       await SessionService.saveSession(
         userId: user.id!,
         email: user.email,
         fullName: user.fullName,
       );
+      await SessionService.setBiometricAccountEmail(user.email);
+      await SessionService.setBiometricEnabled(true);
 
       return AuthResult.success(
         user: user,
-        message: 'Autentikasi biometrik berhasil!',
+        message: 'Selamat datang kembali, ${user.fullName}!',
       );
     } catch (e) {
       return AuthResult.failure('Gagal melakukan login biometrik: $e');

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/app_strings.dart';
 import '../../core/services/game_coin_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import 'loka_catch_screen.dart';
 import '../voucher/voucher_screen.dart';
@@ -40,6 +43,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -52,7 +56,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
         ),
         centerTitle: true,
         title: Text(
-          'Mini Game',
+          s.miniGame,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -76,7 +80,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                     size: 14, color: AppColors.accentGold),
                 const SizedBox(width: 4),
                 Text(
-                  '$_totalCoins Koin',
+                  '$_totalCoins ${s.totalCoins.split(' ').last}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -96,11 +100,11 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Statistik game
-              _buildStatsCard(),
+              _buildStatsCard(s),
               const SizedBox(height: 24),
 
               Text(
-                'LokaCatch',
+                s.lokaCatch,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -109,7 +113,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Mainkan LokaCatch untuk mendapatkan koin & voucher!',
+                s.lokaCatchDesc,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -119,15 +123,16 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
 
               // Game Card: LokaCatch (Gyroscope)
               _buildGameCard(
-                title: 'LokaCatch',
-                subtitle: 'Kendali Gyroscope',
-                description:
-                    'Miringkan HP untuk menangkap 10 bahan kuliner Nusantara. Hindari bom! Menangkan hingga 50 koin.',
+                title: s.lokaCatch,
+                subtitle: s.gyroscope,
+                description: s.lokaCatchDesc,
                 emoji: '🧺',
-                badge: 'GYROSCOPE',
+                badge: s.gyroscope,
                 badgeColor: AppColors.primaryGreen,
                 isNew: true,
-                reward: '+50 Koin',
+                newBadge: s.newBadge,
+                reward: s.rewardCoins,
+                playLabel: s.play,
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -142,7 +147,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
               const SizedBox(height: 24),
 
               // Klaim voucher
-              _buildVoucherSection(),
+              _buildVoucherSection(s),
             ],
           ),
         ),
@@ -151,7 +156,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
   }
 
   /// Kartu statistik game pemain
-  Widget _buildStatsCard() {
+  Widget _buildStatsCard(AppStrings s) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -169,11 +174,11 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem('🪙', '$_totalCoins', 'Total Koin'),
+          _buildStatItem('🪙', '$_totalCoins', s.totalCoins),
           _buildStatDivider(),
-          _buildStatItem('🎮', '$_totalSessions', 'Sesi Main'),
+          _buildStatItem('🎮', '$_totalSessions', s.sessions),
           _buildStatDivider(),
-          _buildStatItem('🏆', '$_highScore', 'High Score'),
+          _buildStatItem('🏆', '$_highScore', s.highScore),
         ],
       ),
     );
@@ -220,7 +225,9 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
     required String badge,
     required Color badgeColor,
     required bool isNew,
+    required String newBadge,
     required String reward,
+    required String playLabel,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -282,7 +289,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            'BARU',
+                            newBadge,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
@@ -357,7 +364,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'Mainkan ▶',
+                          playLabel,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -377,7 +384,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
   }
 
   /// Bagian klaim voucher berdasarkan koin yang dimiliki
-  Widget _buildVoucherSection() {
+  Widget _buildVoucherSection(AppStrings s) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -394,7 +401,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Tukar Koin dengan Voucher',
+                  s.voucherExchange,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -402,7 +409,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                   ),
                 ),
                 Text(
-                  'Kumpulkan koin dari LokaCatch untuk mendapatkan voucher wisata eksklusif!',
+                  s.voucherExchangeSub,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -426,7 +433,7 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             child: Text(
-              'Klaim',
+              s.claimVoucher,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

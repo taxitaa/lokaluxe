@@ -36,14 +36,14 @@ class AppStrings {
 
   // ── Beranda ────────────────────────────────────────────────────────────────
   final String currentLocation;
-  final String greeting;           // "Hello, {name}! 👋"
-  final String tagline;            // "Let's traveling the"
-  final String taglineHighlight;   // "Nusantara!"
-  final String budgetRemaining;    // "Sisa Budget:"
-  final String searchHint;         // "Where are you going?"
+  final String greeting; // "Hello, {name}! 👋"
+  final String tagline; // "Let's traveling the"
+  final String taglineHighlight; // "Nusantara!"
+  final String budgetRemaining; // "Sisa Budget:"
+  final String searchHint; // "Where are you going?"
   final String categories;
   final String groupTours;
-  final String popularIn;          // "Paling Populer di Bali"
+  final String popularIn; // "Paling Populer di Bali"
   final String topChoice;
   final String perPerson;
   final String perNight;
@@ -52,7 +52,7 @@ class AppStrings {
   // ── Lokasi ────────────────────────────────────────────────────────────────
   final String pickLocation;
   final String pickLocationSubtitle;
-  final String searchLocation;     // placeholder search modal
+  final String searchLocation; // placeholder search modal
   final String locationNotFound;
   final String indonesia;
   final String japan;
@@ -72,16 +72,14 @@ class AppStrings {
   final String ratesFromIDR;
   final String hotelPrices;
   final String transportPrices;
-  final String redeemVoucher;
-  final String redeemVoucherSub;
   final String redeem;
 
   // ── Zona Waktu ────────────────────────────────────────────────────────────
   final String timezone;
   final String activeLocation;
   final String referenceTimezones;
-  final String timeDifference;     // "Selisih Waktu (dari WIB)"
-  final String activeZone;         // badge "AKTIF"
+  final String timeDifference; // "Selisih Waktu (dari WIB)"
+  final String activeZone; // badge "AKTIF"
 
   // ── Katalog ───────────────────────────────────────────────────────────────
   final String hotels;
@@ -98,10 +96,6 @@ class AppStrings {
   final String lokaCatchDesc;
   final String gyroscope;
   final String newBadge;
-  final String totalCoins;
-  final String sessions;
-  final String highScore;
-  final String rewardCoins;
   final String voucherExchange;
   final String voucherExchangeSub;
   final String gameOverMsg;
@@ -166,8 +160,6 @@ class AppStrings {
     required this.ratesFromIDR,
     required this.hotelPrices,
     required this.transportPrices,
-    required this.redeemVoucher,
-    required this.redeemVoucherSub,
     required this.redeem,
     required this.timezone,
     required this.activeLocation,
@@ -186,10 +178,6 @@ class AppStrings {
     required this.lokaCatchDesc,
     required this.gyroscope,
     required this.newBadge,
-    required this.totalCoins,
-    required this.sessions,
-    required this.highScore,
-    required this.rewardCoins,
     required this.voucherExchange,
     required this.voucherExchangeSub,
     required this.gameOverMsg,
@@ -254,8 +242,6 @@ class AppStrings {
     ratesFromIDR: 'Kurs dari IDR',
     hotelPrices: '🏨 Hotel Pilihan',
     transportPrices: '🚀 Transportasi',
-    redeemVoucher: 'Tukar Koin dengan Voucher',
-    redeemVoucherSub: 'Kumpulkan koin dari LokaCatch untuk voucher wisata eksklusif!',
     redeem: 'Klaim',
     timezone: 'Zona Waktu',
     activeLocation: 'Lokasi Aktif',
@@ -271,17 +257,12 @@ class AppStrings {
     noData: 'Data tidak tersedia',
     stars: 'bintang',
     lokaCatch: 'LokaCatch',
-    lokaCatchDesc:
-        'Miringkan HP untuk menangkap 10 bahan kuliner Nusantara. Hindari bom! Menangkan hingga 50 koin.',
+    lokaCatchDesc: 'Miringkan HP atau geser layar untuk menangkap 10 hidangan khas Indonesia. Hindari bom dan menangkan voucher!',
     gyroscope: 'GYROSCOPE',
     newBadge: 'BARU',
-    totalCoins: 'Total Koin',
-    sessions: 'Sesi Main',
-    highScore: 'High Score',
-    rewardCoins: '+50 Koin',
-    voucherExchange: 'Tukar Koin dengan Voucher',
+    voucherExchange: 'Hadiah Voucher LokaCatch',
     voucherExchangeSub:
-        'Kumpulkan koin dari LokaCatch untuk mendapatkan voucher wisata eksklusif!',
+        'Menangkan permainan LokaCatch untuk mendapatkan voucher diskon.',
     gameOverMsg: 'Kena Bom! Game Over 💥',
     finalScore: 'Skor Akhir',
     catchItems: 'Tangkap {caught}/{total} item',
@@ -344,8 +325,6 @@ class AppStrings {
     ratesFromIDR: 'Rates from IDR',
     hotelPrices: '🏨 Featured Hotels',
     transportPrices: '🚀 Transport',
-    redeemVoucher: 'Redeem Coins for Voucher',
-    redeemVoucherSub: 'Collect LokaCatch coins to get exclusive travel vouchers!',
     redeem: 'Redeem',
     timezone: 'Time Zone',
     activeLocation: 'Active Location',
@@ -361,17 +340,11 @@ class AppStrings {
     noData: 'No data available',
     stars: 'stars',
     lokaCatch: 'LokaCatch',
-    lokaCatchDesc:
-        'Tilt your phone to catch 10 Nusantara culinary ingredients. Avoid bombs! Win up to 50 coins.',
+    lokaCatchDesc: 'Tilt your phone or swipe to catch 10 Indonesian dishes. Avoid bombs and win a voucher!',
     gyroscope: 'GYROSCOPE',
     newBadge: 'NEW',
-    totalCoins: 'Total Coins',
-    sessions: 'Sessions',
-    highScore: 'High Score',
-    rewardCoins: '+50 Coins',
-    voucherExchange: 'Redeem Coins for Vouchers',
-    voucherExchangeSub:
-        'Collect coins from LokaCatch to get exclusive travel vouchers!',
+    voucherExchange: 'LokaCatch Voucher Reward',
+    voucherExchangeSub: 'Win LokaCatch to receive a discount voucher.',
     gameOverMsg: 'Hit a Bomb! Game Over 💥',
     finalScore: 'Final Score',
     catchItems: 'Caught {caught}/{total} items',

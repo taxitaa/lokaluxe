@@ -18,6 +18,7 @@ import '../finance/finance_hub_screen.dart';
 import '../game/mini_game_screen.dart';
 import '../itinerary/itinerary_screen.dart';
 import '../location/location_picker_modal.dart';
+import 'search_results_screen.dart';
 import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
@@ -105,6 +106,12 @@ class _BerandaScreenState extends State<BerandaScreen> {
     await Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const ItineraryScreen()));
     await _loadRemainingBudget();
+  }
+
+  void _submitSearch(String query) {
+    final keyword = query.trim();
+    if (keyword.isEmpty) return;
+    _open(SearchResultsScreen(query: keyword));
   }
 
   @override
@@ -385,6 +392,8 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       ),
                       child: TextField(
                         controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: _submitSearch,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           color: AppColors.textDark,
@@ -406,20 +415,6 @@ class _BerandaScreenState extends State<BerandaScreen> {
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryGreen,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.tune_rounded,
-                      size: 20,
-                      color: AppColors.accentGold,
                     ),
                   ),
                 ],

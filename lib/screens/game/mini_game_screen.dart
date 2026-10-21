@@ -1,45 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/services/app_strings.dart';
-import '../../core/services/game_coin_service.dart';
 import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import 'loka_catch_screen.dart';
 import '../voucher/voucher_screen.dart';
 
 /// Hub layar mini game - hanya menampilkan LokaCatch
-class MiniGameScreen extends StatefulWidget {
+class MiniGameScreen extends StatelessWidget {
   const MiniGameScreen({super.key});
-
-  @override
-  State<MiniGameScreen> createState() => _MiniGameScreenState();
-}
-
-class _MiniGameScreenState extends State<MiniGameScreen> {
-  int _totalCoins = 0;
-  int _totalSessions = 0;
-  int _highScore = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStats();
-  }
-
-  /// Memuat statistik game dari penyimpanan lokal
-  Future<void> _loadStats() async {
-    final coins = await GameCoinService.getTotalCoins();
-    final sessions = await GameCoinService.getTotalSessions();
-    final hs = await GameCoinService.getHighScore();
-    if (mounted) {
-      setState(() {
-        _totalCoins = coins;
-        _totalSessions = sessions;
-        _highScore = hs;
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,8 +21,11 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
         backgroundColor: AppColors.warmCream,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left_rounded,
-              size: 28, color: AppColors.textDark),
+          icon: const Icon(
+            Icons.chevron_left_rounded,
+            size: 28,
+            color: AppColors.textDark,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         centerTitle: true,
@@ -63,34 +37,6 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
             color: AppColors.textDark,
           ),
         ),
-        actions: [
-          // Tampilan total koin
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.accentGoldLight,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.accentGold, width: 1),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.monetization_on_rounded,
-                    size: 14, color: AppColors.accentGold),
-                const SizedBox(width: 4),
-                Text(
-                  '$_totalCoins ${s.totalCoins.split(' ').last}',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -99,10 +45,6 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Statistik game
-              _buildStatsCard(s),
-              const SizedBox(height: 24),
-
               Text(
                 s.lokaCatch,
                 style: GoogleFonts.plusJakartaSans(
@@ -131,88 +73,23 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                 badgeColor: AppColors.primaryGreen,
                 isNew: true,
                 newBadge: s.newBadge,
-                reward: s.rewardCoins,
+                reward: s.voucher,
                 playLabel: s.play,
                 onTap: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const LokaCatchScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const LokaCatchScreen()),
                   );
-                  // Reload stats setelah kembali dari game
-                  _loadStats();
                 },
               ),
 
               const SizedBox(height: 24),
 
               // Klaim voucher
-              _buildVoucherSection(s),
+              _buildVoucherSection(context, s),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  /// Kartu statistik game pemain
-  Widget _buildStatsCard(AppStrings s) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.primaryGreen,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryGreen.withValues(alpha: 0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem('🪙', '$_totalCoins', s.totalCoins),
-          _buildStatDivider(),
-          _buildStatItem('🎮', '$_totalSessions', s.sessions),
-          _buildStatDivider(),
-          _buildStatItem('🏆', '$_highScore', s.highScore),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String emoji, String value, String label) {
-    return Column(
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 20)),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
-        ),
-        Text(
-          label,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 10,
-            color: Colors.white60,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatDivider() {
-    return Container(
-      height: 40,
-      width: 1,
-      color: Colors.white24,
     );
   }
 
@@ -283,7 +160,9 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                       if (isNew)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.redAccent,
                             borderRadius: BorderRadius.circular(6),
@@ -304,7 +183,9 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: badgeColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
@@ -335,15 +216,20 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.accentGoldLight,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.monetization_on_rounded,
-                                size: 12, color: AppColors.accentGold),
+                            const Icon(
+                              Icons.card_giftcard_rounded,
+                              size: 12,
+                              color: AppColors.accentGold,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               reward,
@@ -358,7 +244,9 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 6),
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primaryGreen,
                           borderRadius: BorderRadius.circular(20),
@@ -383,8 +271,8 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
     );
   }
 
-  /// Bagian klaim voucher berdasarkan koin yang dimiliki
-  Widget _buildVoucherSection(AppStrings s) {
+  /// Informasi hadiah voucher dan akses ke daftar voucher
+  Widget _buildVoucherSection(BuildContext context, AppStrings s) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -421,16 +309,15 @@ class _MiniGameScreenState extends State<MiniGameScreen> {
           ),
           const SizedBox(width: 10),
           ElevatedButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const VoucherScreen()),
-            ),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const VoucherScreen())),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.accentGold,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             child: Text(
               s.claimVoucher,

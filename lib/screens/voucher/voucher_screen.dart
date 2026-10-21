@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../core/models/voucher_data.dart';
 import '../../core/theme/app_colors.dart';
 
 class VoucherScreen extends StatelessWidget {
@@ -98,38 +100,16 @@ class VoucherScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Voucher 1
-            _buildVoucherCard(
-              context: context,
-              discount: 'POTONGAN RP 250.000',
-              title: 'Tur Candi Borobudur & Kuliner Pawon',
-              merchant: 'Mitra Resmi Borobudur Sunrise',
-              expiry: 'Berlaku s/d 30 Nov 2026',
-              hash: '0x8A4B...99F2 (Ledger Verified)',
-              isUsed: false,
-            ),
-
-            // Voucher 2
-            _buildVoucherCard(
-              context: context,
-              discount: 'DISKON 20% RESORT',
-              title: 'Luxury Villa & Spa Seminyak Bali',
-              merchant: 'The Royal Seminyak Retreat',
-              expiry: 'Berlaku s/d 15 Des 2026',
-              hash: '0x3E1C...41D0 (Ledger Verified)',
-              isUsed: false,
-            ),
-
-            // Voucher 3
-            _buildVoucherCard(
-              context: context,
-              discount: 'FREE SPEEDBOAT TICKET',
-              title: 'Penyeberangan Sanur - Nusa Penida',
-              merchant: 'Fast Boat Nusantara Line',
-              expiry: 'Sudah Digunakan',
-              hash: '0x992D...88A1 (Redeemed)',
-              isUsed: true,
-            ),
+            for (final voucher in voucherCatalog)
+              _buildVoucherCard(
+                context: context,
+                discount: voucher.discount,
+                title: voucher.title,
+                merchant: voucher.merchant,
+                expiry: voucher.expiry,
+                hash: voucher.reference,
+                isUsed: voucher.isUsed,
+              ),
           ],
         ),
       ),

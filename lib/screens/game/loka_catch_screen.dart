@@ -6,7 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
-import '../../core/services/game_coin_service.dart';
+import '../../core/models/voucher_data.dart';
+import '../../core/services/game_notification_service.dart';
 import '../../core/theme/app_colors.dart';
 
 // ============================================================
@@ -15,18 +16,18 @@ import '../../core/theme/app_colors.dart';
 
 /// Tipe objek dalam permainan LokaCatch
 enum FallingObjectType {
-  item,  // Objek kuliner/rempah yang harus ditangkap
-  bomb,  // Rintangan bom (game over jika kena)
+  item, // Hidangan khas Indonesia yang harus ditangkap
+  bomb, // Rintangan bom (game over jika kena)
 }
 
 /// Model objek yang jatuh dari atas layar
 class FallingObject {
-  final String id;          // ID unik objek ini
+  final String id; // ID unik objek ini
   final FallingObjectType type;
-  final String emoji;       // Representasi visual emoji
-  double x;                 // Posisi horizontal (0.0 - 1.0, relatif terhadap lebar layar)
-  double y;                 // Posisi vertikal saat ini (dalam pixels)
-  double speed;             // Kecepatan jatuh per frame (pixels/tick)
+  final String emoji; // Representasi visual emoji
+  double x; // Posisi horizontal (0.0 - 1.0, relatif terhadap lebar layar)
+  double y; // Posisi vertikal saat ini (dalam pixels)
+  double speed; // Kecepatan jatuh per frame (pixels/tick)
 
   FallingObject({
     required this.id,
@@ -46,7 +47,7 @@ class FallingObject {
 ///
 /// Mekanisme:
 /// - Pemain memiringkan HP untuk menggerakkan keranjang
-/// - Tangkap 10 item kuliner untuk menang & mendapat koin
+/// - Tangkap 10 item kuliner untuk menang dan mendapatkan voucher
 /// - Hindari bom — jika kena langsung Game Over
 class LokaCatchScreen extends StatefulWidget {
   const LokaCatchScreen({super.key});
@@ -60,41 +61,48 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // ---------------------------------------------------
   // KONSTANTA GAME
   // ---------------------------------------------------
-  static const int _maxItems = 10;            // Item maks untuk menang
-  static const double _basketWidth = 80.0;   // Lebar keranjang (px)
-  static const double _basketHeight = 50.0;  // Tinggi keranjang (px)
-  static const double _objectSize = 44.0;    // Ukuran objek jatuh (px)
-  static const double _gyroSensitivity = 0.008; // Sensitivitas gyroscope
+  static const int _maxItems = 10; // Item maks untuk menang
+  static const double _basketWidth = 80.0; // Lebar keranjang (px)
+  static const double _basketHeight = 50.0; // Tinggi keranjang (px)
+  static const double _objectSize = 44.0; // Ukuran objek jatuh (px)
+  static const double _gyroSensitivity = 0.02; // Sensitivitas gyroscope
+  static const double _manualMoveStep = 0.14;
   static const Duration _tickInterval = Duration(milliseconds: 16); // ~60 FPS
 
   // ---------------------------------------------------
   // DAFTAR OBJEK GAME
   // ---------------------------------------------------
-  /// Emoji kuliner & rempah Nusantara yang bisa ditangkap
+  /// Emoji hidangan khas Indonesia yang bisa ditangkap
   static const List<String> _itemEmojis = [
-    '🌶️', '🧅', '🧄', '🍋', '🥥',
-    '🍛', '🍜', '🥗', '🫚', '🌿',
-    '🫛', '🍃', '🌾', '🫙', '🧂',
+    '🍜',
+    '🍢',
+    '🍛',
+    '🍲',
+    '🍚',
+    '🥘',
+    '🥜',
+    '🍌',
+    '🍘',
+    '🥥',
+    '🌶️',
   ];
 
   // ---------------------------------------------------
   // STATE GAME
   // ---------------------------------------------------
-  List<FallingObject> _objects = [];       // Semua objek aktif di layar
-  double _basketX = 0.5;                   // Posisi horizontal keranjang (0-1)
-  int _caughtItems = 0;                    // Jumlah item berhasil ditangkap
-  bool _isGameOver = false;                // Status game over
-  bool _isWon = false;                     // Status menang (10 item tertangkap)
-  bool _isPlaying = false;                 // Apakah permainan sedang berjalan
-  int _earnedCoins = 0;                    // Koin yang diperoleh sesi ini
-  int _totalCoins = 0;                     // Total koin yang dimiliki
-  bool _gyroscopeAvailable = true;        // Apakah sensor gyroscope tersedia
+  List<FallingObject> _objects = []; // Semua objek aktif di layar
+  double _basketX = 0.5; // Posisi horizontal keranjang (0-1)
+  int _caughtItems = 0; // Jumlah item berhasil ditangkap
+  bool _isGameOver = false; // Status game over
+  bool _isWon = false; // Status menang (10 item tertangkap)
+  bool _isPlaying = false; // Apakah permainan sedang berjalan
+  bool _gyroscopeAvailable = true; // Apakah sensor gyroscope tersedia
 
   // ---------------------------------------------------
   // CONTROLLERS & STREAMS
   // ---------------------------------------------------
-  Timer? _gameTimer;                      // Timer game loop utama
-  Timer? _spawnTimer;                     // Timer untuk spawn objek baru
+  Timer? _gameTimer; // Timer game loop utama
+  Timer? _spawnTimer; // Timer untuk spawn objek baru
   StreamSubscription<GyroscopeEvent>? _gyroSubscription; // Listener gyroscope
 
   // Untuk animasi "item tertangkap" feedback
@@ -108,6 +116,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // Random generator
   final Random _random = Random();
 
+  VoucherData get _gameRewardVoucher => availableVouchers.first;
+
   // Counter untuk ID unik objek
   int _objectIdCounter = 0;
 
@@ -115,7 +125,6 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   void initState() {
     super.initState();
     _initAnimations();
-    _loadTotalCoins();
     _initGyroscope();
   }
 
@@ -130,26 +139,20 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     );
   }
 
-  /// Memuat total koin dari penyimpanan lokal
-  Future<void> _loadTotalCoins() async {
-    final coins = await GameCoinService.getTotalCoins();
-    if (mounted) setState(() => _totalCoins = coins);
-  }
-
   /// Menginisialisasi sensor gyroscope dengan error handling
   ///
   /// Jika perangkat tidak mendukung gyroscope, fallback ke kontrol tap/drag
   void _initGyroscope() {
     try {
-      _gyroSubscription = gyroscopeEventStream(
-        samplingPeriod: SensorInterval.gameInterval,
-      ).listen(
-        _onGyroscopeEvent,
-        onError: (error) {
-          debugPrint('[LokaCatch] Gyroscope error: $error');
-          _setGyroscopeUnavailable();
-        },
-      );
+      _gyroSubscription =
+          gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval)
+              .listen(
+                _onGyroscopeEvent,
+                onError: (error) {
+                  debugPrint('[LokaCatch] Gyroscope error: $error');
+                  _setGyroscopeUnavailable();
+                },
+              );
     } catch (e) {
       debugPrint('[LokaCatch] Gyroscope tidak tersedia: $e');
       _setGyroscopeUnavailable();
@@ -190,7 +193,6 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       _isGameOver = false;
       _isWon = false;
       _isPlaying = true;
-      _earnedCoins = 0;
     });
 
     // Game loop: update posisi objek & deteksi tabrakan setiap ~16ms
@@ -223,20 +225,23 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     final baseSpeed = 2.5 + (_caughtItems * 0.2);
     final speed = baseSpeed + _random.nextDouble() * 1.5;
 
-    _objects.add(FallingObject(
-      id: 'obj_${_objectIdCounter++}',
-      type: isBomb ? FallingObjectType.bomb : FallingObjectType.item,
-      emoji: emoji,
-      x: 0.05 + _random.nextDouble() * 0.90, // Hindari spawn di tepi
-      y: -_objectSize, // Mulai dari atas layar (di luar tampilan)
-      speed: speed,
-    ));
+    _objects.add(
+      FallingObject(
+        id: 'obj_${_objectIdCounter++}',
+        type: isBomb ? FallingObjectType.bomb : FallingObjectType.item,
+        emoji: emoji,
+        x: 0.05 + _random.nextDouble() * 0.90, // Hindari spawn di tepi
+        y: -_objectSize, // Mulai dari atas layar (di luar tampilan)
+        speed: speed,
+      ),
+    );
   }
 
   /// Update state game setiap frame (game loop utama)
   void _updateGame() {
     if (!mounted || _isGameOver || _isWon || !_isPlaying) return;
 
+    var didWin = false;
     setState(() {
       final toRemove = <String>[];
 
@@ -271,7 +276,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               _isWon = true;
               _isPlaying = false;
               _stopGame();
-              _handleWin();
+              didWin = true;
             }
           }
         }
@@ -280,6 +285,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       // Hapus objek yang sudah tidak diperlukan
       _objects.removeWhere((o) => toRemove.contains(o.id));
     });
+    if (didWin) _handleWin();
   }
 
   /// Mengecek tabrakan antara objek jatuh dengan keranjang
@@ -313,20 +319,54 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
         objTop < basketBottom;
   }
 
-  /// Menangani logika kemenangan: simpan koin & tampilkan dialog
+  /// Menangani logika kemenangan dan menampilkan voucher
   Future<void> _handleWin() async {
-    // Simpan high score
-    await GameCoinService.updateHighScore(_caughtItems);
-
-    // Berikan reward koin
-    _earnedCoins = await GameCoinService.awardCoinsForCompletion();
-    _totalCoins = await GameCoinService.getTotalCoins();
+    try {
+      final notificationResult =
+          await GameNotificationService.showVoucherReward(_gameRewardVoucher);
+      if (notificationResult == VoucherNotificationResult.unsupported &&
+          mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Selamat! Kamu mendapatkan ${_gameRewardVoucher.discount}: '
+              '${_gameRewardVoucher.title}',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal menampilkan notifikasi voucher: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notifikasi hadiah gagal ditampilkan.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on MissingPluginException catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Channel notifikasi tidak tersedia: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notifikasi hadiah tidak tersedia di perangkat ini.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on StateError catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Status notifikasi tidak valid: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
 
     if (mounted) {
-      setState(() {});
       // Beri jeda sebentar sebelum tampilkan dialog kemenangan
       await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) _showWinDialog();
+      if (mounted) await _showWinDialog();
     }
   }
 
@@ -337,14 +377,21 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// Menggerakkan keranjang ke kiri (kontrol manual)
   void _moveBasketLeft() {
     setState(() {
-      _basketX = (_basketX - 0.08).clamp(0.0, 1.0);
+      _basketX = (_basketX - _manualMoveStep).clamp(0.0, 1.0);
     });
   }
 
   /// Menggerakkan keranjang ke kanan (kontrol manual)
   void _moveBasketRight() {
     setState(() {
-      _basketX = (_basketX + 0.08).clamp(0.0, 1.0);
+      _basketX = (_basketX + _manualMoveStep).clamp(0.0, 1.0);
+    });
+  }
+
+  void _moveBasketByDrag(double deltaX) {
+    if (!_isPlaying || _screenWidth == 0) return;
+    setState(() {
+      _basketX = (_basketX + deltaX / _screenWidth).clamp(0.0, 1.0);
     });
   }
 
@@ -352,9 +399,9 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // DIALOG
   // ---------------------------------------------------
 
-  /// Menampilkan dialog kemenangan dengan informasi koin
-  void _showWinDialog() {
-    showDialog(
+  /// Menampilkan dialog kemenangan dengan hadiah voucher
+  Future<void> _showWinDialog() async {
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
@@ -389,35 +436,55 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             ),
             const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: AppColors.accentGoldLight,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.accentGold, width: 1.5),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Column(
                 children: [
-                  const Icon(Icons.monetization_on_rounded,
-                      color: AppColors.accentGold, size: 28),
-                  const SizedBox(width: 10),
                   Text(
-                    '+$_earnedCoins Koin',
+                    '🎫 Selamat! Kamu mendapatkan ${_gameRewardVoucher.discount}',
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 24,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textDark,
                     ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _gameRewardVoucher.title,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryGreen,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _gameRewardVoucher.merchant,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ref: ${_gameRewardVoucher.reference}',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontFamily: 'monospace',
+                      color: AppColors.accentGold,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Total Koin: $_totalCoins',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                color: AppColors.textSecondary,
               ),
             ),
           ],
@@ -436,13 +503,15 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                     backgroundColor: AppColors.primaryGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: Text(
                     'Main Lagi',
                     style: GoogleFonts.plusJakartaSans(
-                        fontWeight: FontWeight.w700),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -491,30 +560,36 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             _screenWidth = constraints.maxWidth;
             _screenHeight = constraints.maxHeight;
 
-            return Stack(
-              children: [
-                // === LATAR BELAKANG ===
-                _buildBackground(),
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragUpdate: (details) =>
+                  _moveBasketByDrag(details.delta.dx),
+              child: Stack(
+                children: [
+                  // === LATAR BELAKANG ===
+                  _buildBackground(),
 
-                // === OBJEK YANG JATUH ===
-                ..._buildFallingObjects(),
+                  // === OBJEK YANG JATUH ===
+                  ..._buildFallingObjects(),
 
-                // === KERANJANG PEMAIN ===
-                _buildBasket(),
+                  // === KERANJANG PEMAIN ===
+                  _buildBasket(),
 
-                // === HUD (Heads-Up Display) ===
-                _buildHUD(),
+                  // === HUD (Heads-Up Display) ===
+                  _buildHUD(),
 
-                // === OVERLAY: BELUM MULAI ===
-                if (!_isPlaying && !_isGameOver && !_isWon)
-                  _buildStartOverlay(),
+                  // === OVERLAY: BELUM MULAI ===
+                  if (!_isPlaying && !_isGameOver && !_isWon)
+                    _buildStartOverlay(),
 
-                // === OVERLAY: GAME OVER ===
-                if (_isGameOver) _buildGameOverOverlay(),
+                  // === OVERLAY: GAME OVER ===
+                  if (_isGameOver) _buildGameOverOverlay(),
 
-                // === PERINGATAN GYROSCOPE TIDAK ADA ===
-                if (!_gyroscopeAvailable && _isPlaying) _buildManualControls(),
-              ],
+                  // === PERINGATAN GYROSCOPE TIDAK ADA ===
+                  if (!_gyroscopeAvailable && _isPlaying)
+                    _buildManualControls(),
+                ],
+              ),
             );
           },
         ),
@@ -522,14 +597,17 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     );
   }
 
-  /// AppBar dengan info koin
+  /// AppBar game
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: const Color(0xFF0F1B14),
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.chevron_left_rounded,
-            color: Colors.white, size: 28),
+        icon: const Icon(
+          Icons.chevron_left_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
         onPressed: () => Navigator.of(context).pop(),
       ),
       centerTitle: true,
@@ -541,34 +619,6 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           color: Colors.white,
         ),
       ),
-      actions: [
-        // Tampilan koin
-        Container(
-          margin: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.accentGoldLight,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.accentGold, width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.monetization_on_rounded,
-                  size: 14, color: AppColors.accentGold),
-              const SizedBox(width: 4),
-              Text(
-                '$_totalCoins',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textDark,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -614,14 +664,14 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           ? BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.red.withValues(alpha: 0.15),
-              border: Border.all(color: Colors.red.withValues(alpha: 0.5), width: 1.5),
+              border: Border.all(
+                color: Colors.red.withValues(alpha: 0.5),
+                width: 1.5,
+              ),
             )
           : null,
       child: Center(
-        child: Text(
-          obj.emoji,
-          style: TextStyle(fontSize: isBomb ? 28 : 30),
-        ),
+        child: Text(obj.emoji, style: TextStyle(fontSize: isBomb ? 28 : 30)),
       ),
     );
   }
@@ -699,7 +749,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               ),
               const SizedBox(width: 10),
               Text(
-                '🏆 +50',
+                '🎫 VOUCHER',
                 style: GoogleFonts.plusJakartaSans(
                   color: AppColors.accentGold,
                   fontWeight: FontWeight.w700,
@@ -715,8 +765,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.screen_rotation_rounded,
-                    size: 12, color: Colors.white54),
+                const Icon(
+                  Icons.screen_rotation_rounded,
+                  size: 12,
+                  color: Colors.white54,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'Miringkan HP untuk menggerakkan keranjang',
@@ -756,7 +809,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Tangkap 10 bahan kuliner Nusantara!\nHindari 💣 agar tidak Game Over.',
+                'Tangkap 10 hidangan khas Indonesia!\nHindari 💣 agar tidak Game Over.',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   color: Colors.white70,
@@ -778,15 +831,23 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   children: [
                     if (_gyroscopeAvailable)
                       _buildHowToRow(
-                          '📱', 'Miringkan HP ke kiri/kanan untuk bergerak')
+                        '📱',
+                        'Miringkan HP atau geser layar untuk bergerak',
+                      )
                     else
-                      _buildHowToRow('👆', 'Gunakan tombol ◀ ▶ untuk bergerak'),
+                      _buildHowToRow(
+                        '👆',
+                        'Geser layar atau gunakan tombol ◀ ▶',
+                      ),
                     const SizedBox(height: 6),
-                    _buildHowToRow('🌶️', 'Tangkap rempah & kuliner (+1 item)'),
+                    _buildHowToRow('🍛', 'Tangkap hidangan Indonesia (+1 item)'),
                     const SizedBox(height: 6),
                     _buildHowToRow('💣', 'Hindari bom! (Game Over seketika)'),
                     const SizedBox(height: 6),
-                    _buildHowToRow('🪙', '10 item = +50 koin (pertama kali)'),
+                    _buildHowToRow(
+                      '🎫',
+                      'Tangkap 10 item untuk mendapatkan voucher!',
+                    ),
                   ],
                 ),
               ),
@@ -798,18 +859,24 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.warning_rounded,
-                          color: Colors.orange, size: 16),
+                      const Icon(
+                        Icons.warning_rounded,
+                        color: Colors.orange,
+                        size: 16,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'Gyroscope tidak tersedia.\nMode kontrol manual aktif.',
@@ -830,9 +897,12 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   backgroundColor: AppColors.primaryGreen,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30)),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 48, vertical: 16),
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
                   elevation: 8,
                   shadowColor: AppColors.primaryGreen.withValues(alpha: 0.5),
                 ),
@@ -894,9 +964,12 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                 backgroundColor: AppColors.primaryGreen,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30)),
+                  borderRadius: BorderRadius.circular(30),
+                ),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 40, vertical: 14),
+                  horizontal: 40,
+                  vertical: 14,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -938,8 +1011,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   color: AppColors.primaryGreen.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.arrow_back_ios_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.arrow_back_ios_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
             Text(
@@ -961,8 +1037,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   color: AppColors.primaryGreen.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.arrow_forward_ios_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
           ],

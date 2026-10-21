@@ -1,13 +1,17 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import '../../core/database/db_helper.dart';
 import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/game_notification_service.dart';
 import '../../core/services/preferences_service.dart';
-import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/models/voucher_data.dart';
 import '../auth/login_screen.dart';
-import '../location/location_picker_modal.dart';
 import '../splash/splash_screen.dart';
 import 'security_screen.dart';
 
@@ -19,9 +23,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  int _userRating = 5;
   final TextEditingController _feedbackController = TextEditingController();
   UserModel? _currentUser;
+  Uint8List? _profilePhoto;
+  int? _completedTrips;
+  bool _statsLoadFailed = false;
 
   @override
   void initState() {
@@ -32,10 +38,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadUserProfile() async {
     final user = await AuthService.checkSession();
     if (user != null && mounted) {
+      Uint8List? photo;
+      try {
+        final savedPhoto =
+            await PreferencesService.getProfilePhoto(_profilePhotoKey(user));
+        if (savedPhoto != null) photo = base64Decode(savedPhoto);
+      } catch (error, stackTrace) {
+        debugPrint('[Profile] Gagal memuat foto profil: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
       setState(() {
         _currentUser = user;
+        _profilePhoto = photo;
       });
+      await _loadProfileStats();
     }
+  }
+
+  String _profilePhotoKey(UserModel user) =>
+      user.id?.toString() ?? user.email.trim().toLowerCase();
+
+  Future<void> _loadProfileStats() async {
+    try {
+      final completedTrips = await DBHelper.getCompletedTripCount();
+      if (!mounted) return;
+      setState(() {
+        _completedTrips = completedTrips;
+        _statsLoadFailed = false;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[Profile] Gagal memuat statistik profil: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() => _statsLoadFailed = true);
+    }
+  }
+
+  Future<void> _chooseProfilePhoto() async {
+    final user = _currentUser;
+    if (user == null) return;
+    try {
+      final photo = await ProfilePhotoService.pickProfilePhoto();
+      if (photo == null) return;
+      await PreferencesService.setProfilePhoto(
+        _profilePhotoKey(user),
+        base64Encode(photo),
+      );
+      if (mounted) setState(() => _profilePhoto = photo);
+    } on UnsupportedError catch (error) {
+      _showMessage(error.message ?? 'Fitur foto belum tersedia di perangkat ini.');
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('[Profile] Gagal memilih foto profil: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showMessage('Foto profil tidak dapat dibuka. Silakan coba lagi.');
+    } on MissingPluginException catch (error, stackTrace) {
+      debugPrint('[Profile] Pemilih foto tidak tersedia: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showMessage('Pemilih foto belum tersedia. Mulai ulang aplikasi.');
+    } catch (error, stackTrace) {
+      debugPrint('[Profile] Gagal menyimpan foto profil: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showMessage('Foto profil gagal disimpan. Silakan coba lagi.');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -50,7 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Thank you! Your feedback has been received.',
+          'Kritik dan saran berhasil dikirim. Terima kasih!',
           style: GoogleFonts.plusJakartaSans(color: Colors.white),
         ),
         backgroundColor: AppColors.primaryGreen,
@@ -95,25 +166,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.primaryGreen,
-                        border: Border.all(
-                          color: AppColors.accentGold,
-                          width: 2,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        initials.isNotEmpty ? initials : 'LX',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    GestureDetector(
+                      onTap: _chooseProfilePhoto,
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 30,
+                            backgroundColor: AppColors.primaryGreen,
+                            backgroundImage: _profilePhoto == null
+                                ? null
+                                : MemoryImage(_profilePhoto!),
+                            child: _profilePhoto == null
+                                ? Text(
+                                    initials.isNotEmpty ? initials : 'LX',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: AppColors.accentGold,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.edit_rounded,
+                                size: 12,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -178,14 +268,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 14),
 
-              // Stats Row
+              // Live trip and voucher totals
               Row(
                 children: [
-                  _buildStatCard('3 Trips', 'Completed'),
+                  _buildStatCard(
+                    _statsLoadFailed
+                        ? '—'
+                        : _completedTrips?.toString() ?? '...',
+                    'Trips completed',
+                  ),
                   const SizedBox(width: 10),
-                  _buildStatCard('450', 'Reward points'),
-                  const SizedBox(width: 10),
-                  _buildStatCard('2', 'Active vouchers'),
+                  _buildStatCard(
+                    availableVouchers.length.toString(),
+                    'Active vouchers',
+                  ),
                 ],
               ),
 
@@ -213,24 +309,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildMenuItem(
                       icon: Icons.person_outline_rounded,
                       title: 'Edit personal profile',
-                      subtitle: 'Name, contact details and personal information',
-                    ),
-                    const Divider(color: AppColors.borderLight, height: 1),
-                    _buildMenuItem(
-                      icon: Icons.notifications_none_rounded,
-                      title: 'Notifications & budget alerts',
-                      subtitle: 'Daily remaining budget notifications',
-                    ),
-                    const Divider(color: AppColors.borderLight, height: 1),
-                    Consumer<LocationProvider>(
-                      builder: (context, locationProvider, _) =>
-                          _buildMenuItem(
-                        icon: Icons.location_on_outlined,
-                        title: 'Location & regional settings',
-                        subtitle:
-                            '${locationProvider.currentLocation.displayName} · ${locationProvider.effectiveCurrency} · ${locationProvider.activeTimezone}',
-                        onTap: () => LocationPickerModal.show(context),
-                      ),
+                      subtitle: 'Add or change your profile photo',
+                      onTap: _chooseProfilePhoto,
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
                     _buildMenuItem(
@@ -248,9 +328,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // Form Saran dan Kesan
+              // Course feedback form
               Text(
-                'Share feedback with LokaLuxe',
+                'Kritik dan saran mata kuliah Pemrograman Mobile',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -270,7 +350,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'How has your experience with the app been?',
+                      'Sampaikan kritik dan saran untuk mata kuliah Pemrograman Mobile.',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -278,28 +358,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // Rating Stars Row
-                    Row(
-                      children: List.generate(5, (index) {
-                        return IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          icon: Icon(
-                            index < _userRating
-                                ? Icons.star_rounded
-                                : Icons.star_border_rounded,
-                            size: 28,
-                            color: AppColors.starGold,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _userRating = index + 1;
-                            });
-                          },
-                        );
-                      }),
-                    ),
 
                     const SizedBox(height: 12),
 
@@ -312,8 +370,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppColors.textDark,
                       ),
                       decoration: InputDecoration(
-                        hintText:
-                            'Share feedback, impressions, or feature ideas...',
+                        hintText: 'Tulis kritik dan saran di sini...',
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           color: AppColors.textMuted,
@@ -345,7 +402,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         child: Text(
-                          'Send feedback',
+                          'Kirim kritik dan saran',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,

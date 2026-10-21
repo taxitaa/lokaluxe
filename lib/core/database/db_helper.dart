@@ -673,6 +673,16 @@ class DBHelper {
     return null;
   }
 
+  static Future<int> getCompletedTripCount() async {
+    final db = await database;
+    return Sqflite.firstIntValue(
+          await db.rawQuery(
+            "SELECT COUNT(*) FROM trips WHERE status IN ('archived', 'completed')",
+          ),
+        ) ??
+        0;
+  }
+
   static Future<void> updateActiveTripBudget({
     required double targetBudget,
     required double transportAllocation,

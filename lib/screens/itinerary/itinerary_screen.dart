@@ -15,7 +15,9 @@ import '../transportasi/transport_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
-  const ItineraryScreen({super.key});
+  final Map<String, dynamic>? pendingWisata;
+
+  const ItineraryScreen({super.key, this.pendingWisata});
 
   @override
   State<ItineraryScreen> createState() => _ItineraryScreenState();
@@ -33,6 +35,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   bool _isLoading = true;
   bool _isSavingDetails = false;
   bool _isOpeningCatalog = false;
+  bool _isSavingPendingWisata = false;
+  bool _pendingWisataHandled = false;
 
   @override
   void initState() {
@@ -66,6 +70,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             .toInt();
         _isLoading = false;
       });
+      _savePendingWisataIfReady();
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not load trip: $error');
       if (!mounted) return;
@@ -140,6 +145,87 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       _showMessage('Gagal menyimpan detail perjalanan.', isError: true);
     } finally {
       if (mounted) setState(() => _isSavingDetails = false);
+    }
+  }
+
+  Future<void> _savePendingWisataIfReady() async {
+    final wisata = widget.pendingWisata;
+    final trip = _trip;
+    final startDate = _startDate;
+    if (wisata == null ||
+        _pendingWisataHandled ||
+        _isSavingPendingWisata ||
+        trip == null ||
+        !_hasSavedTripDetails ||
+        startDate == null) {
+      return;
+    }
+
+    _isSavingPendingWisata = true;
+    final plannedDate = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day + _selectedDay,
+    );
+    try {
+      final title = (wisata['nama_wisata'] ?? '').toString().trim();
+      if (title.isEmpty) {
+        _pendingWisataHandled = true;
+        _showMessage(
+          'Pilihan wisata tidak memiliki nama yang valid.',
+          isError: true,
+        );
+        return;
+      }
+
+      final location = [
+        wisata['kota_kabupaten'],
+        wisata['provinsi'],
+      ].where((value) => value != null && value.toString().trim().isNotEmpty)
+          .join(', ');
+      final unitPrice =
+          (wisata['selectionPrice'] as num?)?.toDouble() ??
+          (wisata['harga_tiket'] as num?)?.toDouble() ??
+          0;
+      final result = await DBHelper.insertActiveTripItem(
+        title: title,
+        category: 'Wisata',
+        location: location,
+        unitPrice: unitPrice,
+        quantity: trip.travelerCount ?? 1,
+        plannedDate: plannedDate,
+      );
+      if (!mounted) return;
+
+      _pendingWisataHandled = true;
+      switch (result) {
+        case TripItemSaveResult.saved:
+          await _loadTrip();
+          _showMessage('$title ditambahkan ke itinerary dan budget.');
+          break;
+        case TripItemSaveResult.budgetExceeded:
+          _showMessage(
+            'Budget trip tidak cukup untuk menambahkan $title.',
+            isError: true,
+          );
+          break;
+        case TripItemSaveResult.duplicate:
+          _showMessage('$title sudah ada di itinerary hari ini.');
+          break;
+        case TripItemSaveResult.noActiveTrip:
+          _showMessage(
+            'Buat budget trip terlebih dahulu sebelum memilih wisata.',
+            isError: true,
+          );
+          break;
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[ItineraryScreen] Could not save selected attraction: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _pendingWisataHandled = true;
+      _showMessage('Gagal menyimpan wisata ke itinerary.', isError: true);
+    } finally {
+      _isSavingPendingWisata = false;
     }
   }
 
@@ -451,10 +537,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                     children: [
                       _buildTripDetailsForm(),
-                      if (trip != null) ...[
-                        const SizedBox(height: 20),
-                        _buildRemainingBudget(currency),
+                      if (widget.pendingWisata != null &&
+                          !_pendingWisataHandled &&
+                          !_hasSavedTripDetails) ...[
+                        const SizedBox(height: 12),
+                        _buildPendingWisataNotice(),
                       ],
+                      const SizedBox(height: 20),
+                      _buildRemainingBudget(currency),
                       if (_hasSavedTripDetails) ...[
                         const SizedBox(height: 16),
                         _buildDaySelector(),
@@ -546,6 +636,27 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               child: const Text('Buat budget trip'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPendingWisataNotice() {
+    final title = (widget.pendingWisata?['nama_wisata'] ?? '').toString();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.accentGoldLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accentGold.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        '$title sudah dipilih. Lengkapi dan simpan detail trip untuk '
+        'menambahkannya ke itinerary dan budget.',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          color: AppColors.textDark,
         ),
       ),
     );

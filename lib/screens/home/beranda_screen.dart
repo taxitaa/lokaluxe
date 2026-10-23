@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -9,16 +12,18 @@ import '../../core/services/currency_provider.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/localization_provider.dart';
 import '../../core/services/location_provider.dart';
+import '../../core/services/preferences_service.dart';
+import '../../core/services/timezone_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/database/db_helper.dart';
 import '../../core/models/trip_model.dart';
 import '../budget/budget_planner_screen.dart';
-import '../destination/destination_detail_screen.dart';
 import '../finance/finance_hub_screen.dart';
 import '../game/mini_game_screen.dart';
 import '../itinerary/itinerary_screen.dart';
 import '../location/location_picker_modal.dart';
 import 'search_results_screen.dart';
+import 'popular_wisata_screen.dart';
 import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
@@ -26,7 +31,13 @@ import '../transportasi/transport_catalog_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
   final Function(int) onTabChange;
-  const BerandaScreen({super.key, required this.onTabChange});
+  final int profileRefreshToken;
+
+  const BerandaScreen({
+    super.key,
+    required this.onTabChange,
+    this.profileRefreshToken = 0,
+  });
 
   @override
   State<BerandaScreen> createState() => _BerandaScreenState();
@@ -35,9 +46,12 @@ class BerandaScreen extends StatefulWidget {
 class _BerandaScreenState extends State<BerandaScreen> {
   int _selectedCategoryIndex = 0;
   final TextEditingController _searchController = TextEditingController();
+  late final Future<List<Map<String, dynamic>>> _popularWisataFuture =
+      DBHelper.getWisata();
   double? _remainingBudget;
   TripModel? _activeTrip;
   UserModel? _currentUser;
+  Uint8List? _profilePhoto;
   bool _budgetLoadFailed = false;
 
   @override
@@ -53,8 +67,34 @@ class _BerandaScreenState extends State<BerandaScreen> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant BerandaScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profileRefreshToken != widget.profileRefreshToken) {
+      _loadCurrentUser();
+    }
+  }
+
   void _open(Widget screen) =>
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+
+  Future<void> _openWisataCatalog({String? initialDestination}) async {
+    final wisata = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => WisataCatalogScreen(
+          initialDestination: initialDestination,
+          onSelectWisata: (_) {},
+        ),
+      ),
+    );
+    if (wisata == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ItineraryScreen(pendingWisata: wisata),
+      ),
+    );
+    await _loadRemainingBudget();
+  }
 
   Future<void> _loadRemainingBudget() async {
     try {
@@ -80,7 +120,22 @@ class _BerandaScreenState extends State<BerandaScreen> {
   Future<void> _loadCurrentUser() async {
     final user = await AuthService.checkSession();
     if (!mounted) return;
-    setState(() => _currentUser = user);
+    Uint8List? photo;
+    if (user != null) {
+      try {
+        final userKey = user.id?.toString() ?? user.email.trim().toLowerCase();
+        final savedPhoto = await PreferencesService.getProfilePhoto(userKey);
+        if (savedPhoto != null) photo = base64Decode(savedPhoto);
+      } catch (error, stackTrace) {
+        debugPrint('[BerandaScreen] Could not load profile photo: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _currentUser = user;
+      _profilePhoto = photo;
+    });
   }
 
   String get _displayName {
@@ -262,14 +317,22 @@ class _BerandaScreenState extends State<BerandaScreen> {
                             color: AppColors.primaryGreen,
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            _profileInitials,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _profilePhoto == null
+                              ? Text(
+                                  _profileInitials,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              : Image.memory(
+                                  _profilePhoto!,
+                                  width: 38,
+                                  height: 38,
+                                  fit: BoxFit.cover,
+                                ),
                         ),
                       ),
                     ],
@@ -453,49 +516,60 @@ class _BerandaScreenState extends State<BerandaScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              InkWell(
-                onTap: () => _open(const FinanceHubScreen()),
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.pureWhite,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: _softShadow(0.05),
-                  ),
-                  child: Row(
+              Consumer<LocationProvider>(
+                builder: (context, locationProvider, _) {
+                  final location = locationProvider.currentLocation;
+                  final currencyFlag =
+                      CurrencyService.currencyFlags[location.currency] ??
+                      location.flag;
+
+                  return Row(
                     children: [
-                      const Icon(
-                        Icons.public_rounded,
-                        color: AppColors.primaryGreen,
-                      ),
-                      const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          'Finance & Time',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textDark,
-                          ),
+                        child: _buildFinancePreviewCard(
+                          title: 'Currency',
+                          value: '$currencyFlag ${location.currency}',
+                          subtitle: location.displayName,
+                          icon: Icons.currency_exchange_rounded,
+                          color: AppColors.primaryGreen,
+                          onTap: () => _open(const FinanceHubScreen.currency()),
                         ),
                       ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textSecondary,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: StreamBuilder<DateTime>(
+                          stream: Stream<DateTime>.periodic(
+                            const Duration(seconds: 1),
+                            (_) => DateTime.now(),
+                          ),
+                          initialData: DateTime.now(),
+                          builder: (context, snapshot) {
+                            final zone = TimeZoneService.getZoneInfo(
+                              location.timezone,
+                              now: snapshot.data,
+                            );
+                            return _buildFinancePreviewCard(
+                              title: 'Time',
+                              value: TimeZoneService.formatTimeShort(
+                                zone.localTime,
+                              ),
+                              subtitle: '${location.city} · ${zone.code}',
+                              icon: Icons.access_time_rounded,
+                              color: AppColors.accentGold,
+                              onTap: () => _open(const FinanceHubScreen.time()),
+                            );
+                          },
+                        ),
                       ),
                     ],
-                  ),
-                ),
+                  );
+                },
               ),
 
               const SizedBox(height: 24),
 
               // 6. Kategori Pilihan
-              _sectionHeader(s.categories, s.viewAll),
+              _sectionHeader(s.categories),
               const SizedBox(height: 12),
               SizedBox(
                 height: 40,
@@ -514,7 +588,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                         else if (index == 1)
                           _open(const TransportCatalogScreen());
                         else if (index == 2)
-                          _open(const WisataCatalogScreen());
+                          _openWisataCatalog();
                       },
                       borderRadius: BorderRadius.circular(99),
                       child: Container(
@@ -556,169 +630,71 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
               const SizedBox(height: 24),
 
-              // 7. Group Tours
-              _sectionHeader(s.groupTours, s.viewAll),
+              // 7. Popular attractions by region
+              _sectionHeader(
+                s.popularIn,
+                action: s.viewAll,
+                onTap: () => _open(const PopularWisataScreen()),
+              ),
               const SizedBox(height: 12),
               SizedBox(
                 height: 230,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  clipBehavior: Clip.none,
-                  children: [
-                    _buildTourCard(
-                      imagePath: 'assets/images/dest_tanahlot.jpg',
-                      rating: '4.9',
-                      title: 'Riata Bridge / Tanah Lot',
-                      location: 'Tabanan, Bali',
-                      price: currencyProvider.convertAndFormat(1250000),
-                      badgeText: s.topChoice,
-                      perUnit: s.perPerson,
-                      onTap: () => _open(
-                        DestinationDetailScreen(
-                          title: 'Riata Bridge & Tanah Lot',
-                          location: 'Tabanan, Bali',
-                          imagePath: 'assets/images/dest_tanahlot.jpg',
-                          price: currencyProvider.convertAndFormat(1250000),
-                          rating: '4.9',
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _popularWisataFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Gagal memuat wisata: ${snapshot.error}',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.errorRed,
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    _buildTourCard(
-                      imagePath: 'assets/images/dest_borobudur.jpg',
-                      rating: '4.8',
-                      title: 'Candi Borobudur Sunrise',
-                      location: 'Magelang, Jawa Tengah',
-                      price: currencyProvider.convertAndFormat(750000),
-                      badgeText: 'Popular',
-                      perUnit: s.perPerson,
-                      onTap: () => _open(
-                        DestinationDetailScreen(
-                          title: 'Candi Borobudur Sunrise',
-                          location: 'Magelang, Jawa Tengah',
-                          imagePath: 'assets/images/dest_borobudur.jpg',
-                          price: currencyProvider.convertAndFormat(750000),
-                          rating: '4.8',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-              const SizedBox(height: 24),
+                    final featured = _featuredWisataByRegion(snapshot.data!);
+                    if (featured.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'Belum ada data wisata.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      );
+                    }
 
-              // 8. Paling Populer
-              _sectionHeader(s.popularIn, s.topChoice),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () => _open(
-                  DestinationDetailScreen(
-                    title: 'Nusa Penida Island Tour',
-                    location: 'Klungkung, Bali',
-                    imagePath: 'assets/images/dest_nusapenida.jpg',
-                    price: currencyProvider.convertAndFormat(650000),
-                    rating: '4.9',
-                  ),
-                ),
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.pureWhite,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: _softShadow(0.06),
-                  ),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          width: 84,
-                          height: 84,
-                          child: Image.asset(
-                            'assets/images/dest_nusapenida.jpg',
-                            fit: BoxFit.cover,
+                    return ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      clipBehavior: Clip.none,
+                      itemCount: featured.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 14),
+                      itemBuilder: (context, index) {
+                        final wisata = featured[index];
+                        final price = (wisata['harga_tiket'] as num?)
+                            ?.toDouble();
+                        return _buildPopularCard(
+                          wisata: wisata,
+                          price: price == null
+                              ? ''
+                              : price == 0
+                              ? 'Gratis'
+                              : currencyProvider.convertAndFormat(price),
+                          onTap: () => _openWisataCatalog(
+                            initialDestination: (wisata['nama_wisata'] ?? '')
+                                .toString(),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.accentGoldLight,
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                              child: Text(
-                                s.topChoice,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.accentGold,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Nusa Penida Island Tour',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.star_rounded,
-                                  size: 14,
-                                  color: AppColors.starGold,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '4.9 (425 reviews) • 1 ${s.perDay.replaceAll('/', '').trim()}',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            currencyProvider.convertAndFormat(650000),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          Text(
-                            s.perPerson,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
 
@@ -740,27 +716,48 @@ class _BerandaScreenState extends State<BerandaScreen> {
     ),
   ];
 
-  Widget _sectionHeader(String title, String action) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(
-        title,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textDark,
-        ),
-      ),
-      Text(
-        action,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppColors.accentGold,
-        ),
-      ),
-    ],
-  );
+  List<Map<String, dynamic>> _featuredWisataByRegion(
+    List<Map<String, dynamic>> wisataList,
+  ) {
+    final featured = <Map<String, dynamic>>[];
+    final regions = <String>{};
+    for (final wisata in wisataList) {
+      final region = (wisata['provinsi'] ?? '').toString().trim();
+      if (regions.add(region)) featured.add(wisata);
+    }
+    return featured;
+  }
+
+  Widget _sectionHeader(String title, {String? action, VoidCallback? onTap}) =>
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          if (action != null)
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Text(
+                  action,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.accentGold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
 
   Widget _buildQuickAction({
     required IconData icon,
@@ -795,156 +792,201 @@ class _BerandaScreenState extends State<BerandaScreen> {
     ),
   );
 
-  Widget _buildTourCard({
-    required String imagePath,
-    required String rating,
+  Widget _buildFinancePreviewCard({
     required String title,
-    required String location,
-    required String price,
-    required String badgeText,
-    required String perUnit,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
     required VoidCallback onTap,
   }) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(24),
+    borderRadius: BorderRadius.circular(16),
     child: Container(
-      width: 210,
+      height: 120,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.pureWhite,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: _softShadow(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderLight),
+        boxShadow: _softShadow(0.05),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
+          Row(
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                child: SizedBox(
-                  height: 120,
-                  width: double.infinity,
-                  child: Image.asset(imagePath, fit: BoxFit.cover),
-                ),
-              ),
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryGreen.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.star_rounded,
-                        size: 13,
-                        color: AppColors.starGold,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        rating,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+              Icon(icon, size: 21, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textDark,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_rounded,
-                      size: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 2),
-                    Expanded(
-                      child: Text(
-                        location,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '$price $perUnit',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentGoldLight,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        badgeText,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: color,
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
             ),
           ),
         ],
       ),
     ),
   );
+
+  Widget _buildPopularCard({
+    required Map<String, dynamic> wisata,
+    required String price,
+    required VoidCallback onTap,
+  }) {
+    final imageUrl = (wisata['image_url'] ?? '').toString().trim();
+    final province = (wisata['provinsi'] ?? '').toString().trim();
+    final city = (wisata['kota_kabupaten'] ?? '').toString().trim();
+    final location = [
+      city,
+      province,
+    ].where((part) => part.isNotEmpty).join(', ');
+    final fallback = Container(
+      height: 120,
+      width: double.infinity,
+      color: AppColors.surfaceCream,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.attractions_rounded,
+        size: 40,
+        color: AppColors.primaryGreen,
+      ),
+    );
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        width: 210,
+        decoration: BoxDecoration(
+          color: AppColors.pureWhite,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: _softShadow(0.06),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 120,
+              width: double.infinity,
+              child: imageUrl.isEmpty
+                  ? fallback
+                  : Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => fallback,
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (wisata['nama_wisata'] ?? '').toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    location.isEmpty ? province : location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          price,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      if (province.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          constraints: const BoxConstraints(maxWidth: 88),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentGoldLight,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            province,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   // ─── Currency Badge / Toggle ──────────────────────────────────────────────
 

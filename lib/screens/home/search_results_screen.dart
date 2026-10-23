@@ -6,6 +6,7 @@ import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/theme/app_colors.dart';
 import '../hotel/hotel_catalog_screen.dart';
+import '../itinerary/itinerary_screen.dart';
 import '../transportasi/transport_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
 
@@ -56,7 +57,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
         .where(
           (item) => matches(
             '${item['nama_wisata'] ?? ''} ${item['kota_kabupaten'] ?? ''} '
-            '${item['provinsi'] ?? ''} ${item['alamat'] ?? ''}',
+            '${item['provinsi'] ?? ''} ${item['alamat'] ?? ''} '
+            '${item['kategori'] ?? ''}',
           ),
         )
         .toList();
@@ -135,6 +137,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                       (hotel) => _ResultItem(
                         title: hotel.name,
                         subtitle: '${hotel.city}, ${hotel.province}',
+                        imageUrl: hotel.imageUrl,
+                        imageIcon: Icons.hotel_rounded,
                         onTap: () => _open(
                           context,
                           HotelCatalogScreen(initialDestination: widget.query),
@@ -154,6 +158,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                         subtitle: item.route.isEmpty
                             ? item.province
                             : item.route,
+                        imageUrl: item.imageUrl,
+                        imageIcon: Icons.directions_bus_rounded,
                         onTap: () => _open(
                           context,
                           TransportCatalogScreen(
@@ -173,11 +179,25 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                       (item) => _ResultItem(
                         title: (item['nama_wisata'] ?? '').toString(),
                         subtitle:
-                            '${item['kota_kabupaten'] ?? ''}, ${item['provinsi'] ?? ''}',
-                        onTap: () => _open(
-                          context,
-                          WisataCatalogScreen(initialDestination: widget.query),
-                        ),
+                            [
+                                  item['kategori'],
+                                  [item['kota_kabupaten'], item['provinsi']]
+                                      .where(
+                                        (value) =>
+                                            value != null &&
+                                            value.toString().isNotEmpty,
+                                      )
+                                      .join(', '),
+                                ]
+                                .where(
+                                  (value) =>
+                                      value != null &&
+                                      value.toString().isNotEmpty,
+                                )
+                                .join(' · '),
+                        imageUrl: (item['image_url'] ?? '').toString(),
+                        imageIcon: Icons.attractions_rounded,
+                        onTap: () => _openWisata(context, item),
                       ),
                     )
                     .toList(),
@@ -216,25 +236,65 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             ],
           ),
         ),
-        ...items
-            .take(12)
-            .map(
-              (item) => Card(
-                color: AppColors.pureWhite,
-                child: ListTile(
-                  title: Text(
-                    item.title,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+        ...items.take(12).map((item) {
+          return Card(
+            color: AppColors.pureWhite,
+            margin: const EdgeInsets.only(bottom: 10),
+            elevation: 2,
+            shadowColor: Colors.black.withValues(alpha: 0.12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: item.onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  children: [
+                    _ResultThumbnail(
+                      imageUrl: item.imageUrl,
+                      icon: item.imageIcon,
                     ),
-                  ),
-                  subtitle: Text(item.subtitle),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: item.onTap,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
                 ),
               ),
             ),
+          );
+        }),
         if (items.length > 12)
           Padding(
             padding: const EdgeInsets.only(left: 12, top: 4),
@@ -253,6 +313,27 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
   void _open(BuildContext context, Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
+
+  Future<void> _openWisata(
+    BuildContext context,
+    Map<String, dynamic> wisata,
+  ) async {
+    final selectedWisata = await Navigator.of(context)
+        .push<Map<String, dynamic>>(
+          MaterialPageRoute(
+            builder: (_) => WisataCatalogScreen(
+              initialDestination: (wisata['nama_wisata'] ?? '').toString(),
+              onSelectWisata: (_) {},
+            ),
+          ),
+        );
+    if (selectedWisata == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ItineraryScreen(pendingWisata: selectedWisata),
+      ),
+    );
+  }
 }
 
 class _SearchResults {
@@ -270,11 +351,61 @@ class _SearchResults {
 class _ResultItem {
   final String title;
   final String subtitle;
+  final String imageUrl;
+  final IconData imageIcon;
   final VoidCallback onTap;
 
   const _ResultItem({
     required this.title,
     required this.subtitle,
+    required this.imageUrl,
+    required this.imageIcon,
     required this.onTap,
   });
+}
+
+class _ResultThumbnail extends StatelessWidget {
+  final String imageUrl;
+  final IconData icon;
+
+  const _ResultThumbnail({required this.imageUrl, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      color: AppColors.surfaceCream,
+      alignment: Alignment.center,
+      child: Icon(icon, size: 30, color: AppColors.primaryGreen),
+    );
+    final url = imageUrl.trim();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 82,
+        height: 76,
+        child: url.isEmpty
+            ? fallback
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => fallback,
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : Container(
+                        color: AppColors.surfaceCream,
+                        alignment: Alignment.center,
+                        child: const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primaryGreen,
+                          ),
+                        ),
+                      ),
+              ),
+      ),
+    );
+  }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../concierge/concierge_screen.dart';
 import '../map/navigator_map_screen.dart';
@@ -17,6 +18,7 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late int _currentIndex;
+  int _profileRefreshToken = 0;
 
   @override
   void initState() {
@@ -27,23 +29,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _onTabTapped(int index) {
     setState(() {
       _currentIndex = index;
+      if (index == 0) _profileRefreshToken++;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
-      BerandaScreen(onTabChange: _onTabTapped),
+      BerandaScreen(
+        onTabChange: _onTabTapped,
+        profileRefreshToken: _profileRefreshToken,
+      ),
       const NavigatorMapScreen(),
       const ConciergeScreen(),
       const ProfileScreen(),
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.pureWhite,
@@ -123,8 +126,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color:
-                    isSelected ? AppColors.primaryGreen : AppColors.textMuted,
+                color: isSelected
+                    ? AppColors.primaryGreen
+                    : AppColors.textMuted,
               ),
             ),
           ],

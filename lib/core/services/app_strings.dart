@@ -43,7 +43,7 @@ class AppStrings {
   final String searchHint; // "Where are you going?"
   final String categories;
   final String groupTours;
-  final String popularIn; // "Paling Populer di Bali"
+  final String popularIn;
   final String topChoice;
   final String perPerson;
   final String perNight;
@@ -217,7 +217,7 @@ class AppStrings {
     searchHint: 'Mau kemana hari ini?',
     categories: 'Kategori Pilihan',
     groupTours: 'Wisata Grup',
-    popularIn: 'Terpopuler di Bali',
+    popularIn: 'Wisata Populer',
     topChoice: 'PILIHAN UTAMA',
     perPerson: '/ orang',
     perNight: '/ malam',
@@ -300,7 +300,7 @@ class AppStrings {
     searchHint: 'Where are you going?',
     categories: 'Categories',
     groupTours: 'Group Tours',
-    popularIn: 'Popular in Bali',
+    popularIn: 'Popular Attractions',
     topChoice: 'TOP CHOICE',
     perPerson: '/ person',
     perNight: '/ night',

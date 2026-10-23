@@ -76,7 +76,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         title: Text(
-          'Hasil pencarian',
+          'Pencarian trip',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -120,11 +120,49 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                'Hasil untuk "${widget.query}" · $total item',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.pureWhite,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.borderLight),
+                ),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: AppColors.primaryGreenSubtle,
+                      child: Icon(
+                        Icons.search_rounded,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hasil untuk',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '"${widget.query}" · $total item',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -139,10 +177,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                         subtitle: '${hotel.city}, ${hotel.province}',
                         imageUrl: hotel.imageUrl,
                         imageIcon: Icons.hotel_rounded,
-                        onTap: () => _open(
-                          context,
-                          HotelCatalogScreen(initialDestination: widget.query),
-                        ),
+                        onTap: () => _openHotel(context, hotel),
                       ),
                     )
                     .toList(),
@@ -160,12 +195,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                             : item.route,
                         imageUrl: item.imageUrl,
                         imageIcon: Icons.directions_bus_rounded,
-                        onTap: () => _open(
-                          context,
-                          TransportCatalogScreen(
-                            initialDestination: widget.query,
-                          ),
-                        ),
+                        onTap: () => _openTransport(context, item),
                       ),
                     )
                     .toList(),
@@ -310,8 +340,43 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
     );
   }
 
-  void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  Future<void> _openHotel(BuildContext context, HotelModel hotel) async {
+    final selectedHotel = await Navigator.of(context).push<HotelModel>(
+      MaterialPageRoute(
+        builder: (_) => HotelCatalogScreen(
+          selectMode: true,
+          initialDestination: hotel.name,
+          onSelectHotel: (_) {},
+        ),
+      ),
+    );
+    if (selectedHotel == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ItineraryScreen(pendingHotel: selectedHotel),
+      ),
+    );
+  }
+
+  Future<void> _openTransport(
+    BuildContext context,
+    TransportModel transport,
+  ) async {
+    final selectedTransport = await Navigator.of(context)
+        .push<TransportModel>(
+          MaterialPageRoute(
+            builder: (_) => TransportCatalogScreen(
+              initialDestination: transport.name,
+              onSelectTransport: (_) {},
+            ),
+          ),
+        );
+    if (selectedTransport == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ItineraryScreen(pendingTransport: selectedTransport),
+      ),
+    );
   }
 
   Future<void> _openWisata(

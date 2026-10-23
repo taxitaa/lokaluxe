@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/services/currency_provider.dart';
+import '../itinerary/itinerary_screen.dart';
 
 import 'package:google_fonts/google_fonts.dart';
 
@@ -151,7 +152,9 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
 
           // Terapkan filter pencarian + kategori
           final q = _query.trim().toLowerCase();
-          final queryTerms = q.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
+          final queryTerms = q
+              .split(RegExp(r'\s+'))
+              .where((term) => term.isNotEmpty);
           final hasil = semua.where((e) {
             final nama = (e['nama_wisata'] ?? '').toString().toLowerCase();
             final kota = (e['kota_kabupaten'] ?? '').toString().toLowerCase();
@@ -471,6 +474,19 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
               color: Colors.white,
               fontWeight: FontWeight.w600,
             ),
+          ),
+          action: SnackBarAction(
+            label: 'Lihat',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ItineraryScreen(
+                    pendingWisata: {...w, 'selectionPrice': _nilaiHarga(w)},
+                  ),
+                ),
+              );
+            },
           ),
         ),
       );

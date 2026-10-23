@@ -7,6 +7,7 @@ import '../../core/database/hotel_seed_data.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../itinerary/itinerary_screen.dart';
 
 class HotelCatalogScreen extends StatefulWidget {
   final Function(HotelModel hotel)? onSelectHotel;
@@ -198,7 +199,13 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
           action: SnackBarAction(
             label: 'Lihat',
             textColor: AppColors.starGold,
-            onPressed: () => _showHotelDetailBottomSheet(hotel),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ItineraryScreen(pendingHotel: hotel),
+                ),
+              );
+            },
           ),
         ),
       );

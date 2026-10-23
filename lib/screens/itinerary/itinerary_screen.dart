@@ -16,8 +16,15 @@ import '../wisata/wisata_catalog_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
   final Map<String, dynamic>? pendingWisata;
+  final HotelModel? pendingHotel;
+  final TransportModel? pendingTransport;
 
-  const ItineraryScreen({super.key, this.pendingWisata});
+  const ItineraryScreen({
+    super.key,
+    this.pendingWisata,
+    this.pendingHotel,
+    this.pendingTransport,
+  });
 
   @override
   State<ItineraryScreen> createState() => _ItineraryScreenState();
@@ -35,8 +42,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   bool _isLoading = true;
   bool _isSavingDetails = false;
   bool _isOpeningCatalog = false;
-  bool _isSavingPendingWisata = false;
-  bool _pendingWisataHandled = false;
+  bool _isSavingPendingSelection = false;
+  bool _pendingSelectionHandled = false;
 
   @override
   void initState() {
@@ -70,7 +77,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             .toInt();
         _isLoading = false;
       });
-      _savePendingWisataIfReady();
+      _savePendingSelectionIfReady();
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not load trip: $error');
       if (!mounted) return;
@@ -148,60 +155,112 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     }
   }
 
-  Future<void> _savePendingWisataIfReady() async {
+  String get _pendingSelectionTitle {
+    if (widget.pendingHotel != null) return widget.pendingHotel!.name;
+    if (widget.pendingTransport != null) return widget.pendingTransport!.name;
+    return (widget.pendingWisata?['nama_wisata'] ?? '').toString();
+  }
+
+  bool get _hasPendingSelection =>
+      widget.pendingHotel != null ||
+      widget.pendingTransport != null ||
+      widget.pendingWisata != null;
+
+  Future<void> _savePendingSelectionIfReady() async {
+    final hasPendingSelection = _hasPendingSelection;
     final wisata = widget.pendingWisata;
     final trip = _trip;
     final startDate = _startDate;
-    if (wisata == null ||
-        _pendingWisataHandled ||
-        _isSavingPendingWisata ||
+    if (!hasPendingSelection ||
+        _pendingSelectionHandled ||
+        _isSavingPendingSelection ||
         trip == null ||
         !_hasSavedTripDetails ||
         startDate == null) {
       return;
     }
 
-    _isSavingPendingWisata = true;
+    _isSavingPendingSelection = true;
     final plannedDate = DateTime(
       startDate.year,
       startDate.month,
       startDate.day + _selectedDay,
     );
     try {
-      final title = (wisata['nama_wisata'] ?? '').toString().trim();
+      var title = '';
+      var category = '';
+      var location = '';
+      var unitPrice = 0.0;
+      var quantity = 1;
+
+      final hotel = widget.pendingHotel;
+      final transport = widget.pendingTransport;
+      if (hotel != null) {
+        final nights = ((trip.durationDays ?? 1) - 1).clamp(0, 365).toInt();
+        if (nights < 1) {
+          _pendingSelectionHandled = true;
+          _showMessage(
+            'Untuk memilih hotel, durasi trip harus minimal 2 hari.',
+            isError: true,
+          );
+          return;
+        }
+        title = hotel.name;
+        category = 'Hotel';
+        location = hotel.locationDescription;
+        unitPrice = hotel.pricePerNight * nights;
+        quantity = ((trip.travelerCount ?? 1) + 1) ~/ 2;
+      } else if (transport != null) {
+        final isDailyRental =
+            transport.type == 'Sewa Mobil' || transport.type == 'Sewa Motor';
+        title = transport.name;
+        category = isDailyRental ? 'Transportasi sewa harian' : 'Transportasi';
+        location = transport.route;
+        unitPrice = transport.price;
+        quantity = isDailyRental
+            ? trip.durationDays ?? 1
+            : trip.travelerCount ?? 1;
+      } else if (wisata != null) {
+        title = (wisata['nama_wisata'] ?? '').toString().trim();
+        category = 'Wisata';
+        location =
+            [wisata['alamat'], wisata['kota_kabupaten'], wisata['provinsi']]
+                .where(
+                  (value) =>
+                      value != null && value.toString().trim().isNotEmpty,
+                )
+                .join(', ');
+        unitPrice =
+            (wisata['selectionPrice'] as num?)?.toDouble() ??
+            (wisata['harga_tiket'] as num?)?.toDouble() ??
+            0;
+        quantity = trip.travelerCount ?? 1;
+      }
+
       if (title.isEmpty) {
-        _pendingWisataHandled = true;
+        _pendingSelectionHandled = true;
         _showMessage(
-          'Pilihan wisata tidak memiliki nama yang valid.',
+          'Pilihan katalog tidak memiliki nama yang valid.',
           isError: true,
         );
         return;
       }
 
-      final location = [
-        wisata['kota_kabupaten'],
-        wisata['provinsi'],
-      ].where((value) => value != null && value.toString().trim().isNotEmpty)
-          .join(', ');
-      final unitPrice =
-          (wisata['selectionPrice'] as num?)?.toDouble() ??
-          (wisata['harga_tiket'] as num?)?.toDouble() ??
-          0;
       final result = await DBHelper.insertActiveTripItem(
         title: title,
-        category: 'Wisata',
+        category: category,
         location: location,
         unitPrice: unitPrice,
-        quantity: trip.travelerCount ?? 1,
+        quantity: quantity,
         plannedDate: plannedDate,
       );
       if (!mounted) return;
 
-      _pendingWisataHandled = true;
+      _pendingSelectionHandled = true;
       switch (result) {
         case TripItemSaveResult.saved:
           await _loadTrip();
-          _showMessage('$title ditambahkan ke itinerary dan budget.');
+          _showMessage('$title ditambahkan ke itinerary dan budget trip.');
           break;
         case TripItemSaveResult.budgetExceeded:
           _showMessage(
@@ -220,12 +279,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           break;
       }
     } catch (error, stackTrace) {
-      debugPrint('[ItineraryScreen] Could not save selected attraction: $error');
+      debugPrint(
+        '[ItineraryScreen] Could not save selected catalog item: $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
-      _pendingWisataHandled = true;
-      _showMessage('Gagal menyimpan wisata ke itinerary.', isError: true);
+      _pendingSelectionHandled = true;
+      _showMessage('Gagal menyimpan pilihan ke itinerary.', isError: true);
     } finally {
-      _isSavingPendingWisata = false;
+      _isSavingPendingSelection = false;
     }
   }
 
@@ -537,11 +598,11 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                     children: [
                       _buildTripDetailsForm(),
-                      if (widget.pendingWisata != null &&
-                          !_pendingWisataHandled &&
+                      if (_hasPendingSelection &&
+                          !_pendingSelectionHandled &&
                           !_hasSavedTripDetails) ...[
                         const SizedBox(height: 12),
-                        _buildPendingWisataNotice(),
+                        _buildPendingSelectionNotice(),
                       ],
                       const SizedBox(height: 20),
                       _buildRemainingBudget(currency),
@@ -623,6 +684,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               'Setelah budget disimpan, kamu bisa mengisi tujuan dan menyusun itinerary.',
               textAlign: TextAlign.center,
             ),
+            if (_hasPendingSelection) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${_pendingSelectionTitle} sudah dipilih dan akan ditambahkan '
+                'setelah budget serta detail trip disimpan.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             ElevatedButton(
               onPressed: () async {
@@ -641,8 +714,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     );
   }
 
-  Widget _buildPendingWisataNotice() {
-    final title = (widget.pendingWisata?['nama_wisata'] ?? '').toString();
+  Widget _buildPendingSelectionNotice() {
+    final title = _pendingSelectionTitle;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),

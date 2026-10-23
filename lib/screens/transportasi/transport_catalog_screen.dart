@@ -5,6 +5,7 @@ import '../../core/database/db_helper.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../itinerary/itinerary_screen.dart';
 
 class TransportCatalogScreen extends StatefulWidget {
   // Kalau diisi, dipanggil saat user menekan "Pilih" (misal untuk itinerary/budget)
@@ -171,6 +172,17 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                 ),
               ),
             ],
+          ),
+          action: SnackBarAction(
+            label: 'Lihat',
+            textColor: AppColors.starGold,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ItineraryScreen(pendingTransport: t),
+                ),
+              );
+            },
           ),
         ),
       );

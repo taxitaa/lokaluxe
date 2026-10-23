@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
@@ -245,16 +246,6 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         return;
       }
 
-<<<<<<< HEAD
-=======
-      final location = [wisata['kota_kabupaten'], wisata['provinsi']]
-          .where((value) => value != null && value.toString().trim().isNotEmpty)
-          .join(', ');
-      final unitPrice =
-          (wisata['selectionPrice'] as num?)?.toDouble() ??
-          (wisata['harga_tiket'] as num?)?.toDouble() ??
-          0;
->>>>>>> 6e8dd35f19ed7910b86630cdab283773570867af
       final result = await DBHelper.insertActiveTripItem(
         title: title,
         category: category,
@@ -289,11 +280,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       }
     } catch (error, stackTrace) {
       debugPrint(
-<<<<<<< HEAD
         '[ItineraryScreen] Could not save selected catalog item: $error',
-=======
-        '[ItineraryScreen] Could not save selected attraction: $error',
->>>>>>> 6e8dd35f19ed7910b86630cdab283773570867af
       );
       debugPrintStack(stackTrace: stackTrace);
       _pendingSelectionHandled = true;
@@ -611,14 +598,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                     children: [
                       _buildTripDetailsForm(),
-<<<<<<< HEAD
                       if (_hasPendingSelection &&
                           !_pendingSelectionHandled &&
-=======
-                      if (widget.pendingWisata != null &&
-                          !_pendingWisataHandled &&
-                          trip != null &&
->>>>>>> 6e8dd35f19ed7910b86630cdab283773570867af
                           !_hasSavedTripDetails) ...[
                         const SizedBox(height: 12),
                         _buildPendingSelectionNotice(),

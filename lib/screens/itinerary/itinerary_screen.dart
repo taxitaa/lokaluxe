@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
@@ -178,10 +177,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         return;
       }
 
-      final location = [
-        wisata['kota_kabupaten'],
-        wisata['provinsi'],
-      ].where((value) => value != null && value.toString().trim().isNotEmpty)
+      final location = [wisata['kota_kabupaten'], wisata['provinsi']]
+          .where((value) => value != null && value.toString().trim().isNotEmpty)
           .join(', ');
       final unitPrice =
           (wisata['selectionPrice'] as num?)?.toDouble() ??
@@ -220,7 +217,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           break;
       }
     } catch (error, stackTrace) {
-      debugPrint('[ItineraryScreen] Could not save selected attraction: $error');
+      debugPrint(
+        '[ItineraryScreen] Could not save selected attraction: $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
       _pendingWisataHandled = true;
       _showMessage('Gagal menyimpan wisata ke itinerary.', isError: true);
@@ -539,12 +538,15 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       _buildTripDetailsForm(),
                       if (widget.pendingWisata != null &&
                           !_pendingWisataHandled &&
+                          trip != null &&
                           !_hasSavedTripDetails) ...[
                         const SizedBox(height: 12),
                         _buildPendingWisataNotice(),
                       ],
-                      const SizedBox(height: 20),
-                      _buildRemainingBudget(currency),
+                      if (trip != null) ...[
+                        const SizedBox(height: 20),
+                        _buildRemainingBudget(currency),
+                      ],
                       if (_hasSavedTripDetails) ...[
                         const SizedBox(height: 16),
                         _buildDaySelector(),

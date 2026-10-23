@@ -1,17 +1,32 @@
-# lokaluxe
+# LokaLuxe
 
-A new Flutter project.
+Flutter application for travel planning.
 
-## Getting Started
+## Supabase authentication
 
-This project is a starting point for a Flutter application.
+The app supports Supabase Auth for account login across devices. The Supabase
+project URL and publishable key are provided at build/run time; never use a
+`service_role` key in the client app.
 
-A few resources to get you started if this is your first Flutter project:
+1. In the Supabase SQL Editor, run [`supabase/schema.sql`](supabase/schema.sql).
+2. In Supabase Authentication settings, choose the email confirmation policy
+   appropriate for the app. If confirmation is enabled, users must confirm the
+   message before they can sign in on another device.
+3. Run the app with these Dart defines, replacing the values with the project's
+   URL and publishable key:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+   ```powershell
+   flutter run `
+     --dart-define=SUPABASE_URL=https://your-project.supabase.co `
+     --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   ```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+   Add the same defines to the build command used to distribute the app.
+4. To migrate an account that exists only in the old local database, sign in on
+   the original device once with its existing email and password while the app
+   is configured for Supabase. If email confirmation is required, confirm it
+   before signing in on another device.
+
+Without both defines, authentication retains the existing local-only behavior.
+Only authentication and basic profile information are stored in Supabase;
+trips, expenses, and other app data remain local to each device.

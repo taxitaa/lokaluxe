@@ -7,8 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
+import '../../core/database/db_helper.dart';
+import '../../core/models/hotel_model.dart';
+import '../../core/models/transport_model.dart';
 import '../../core/models/voucher_data.dart';
 import '../../core/services/game_notification_service.dart';
+import '../../core/services/session_service.dart';
+import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
 
 // ============================================================
@@ -104,6 +109,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   bool _gyroscopeAvailable = true; // Apakah sensor gyroscope tersedia
   bool _komodoHasFood = false;
   String? _lastCaughtFoodAsset;
+  String? _earnedVoucherCode;
+  String? _voucherSaveError;
 
   double get _komodoLeft {
     if (_screenWidth <= 0) return 0;
@@ -135,7 +142,53 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // Random generator
   final Random _random = Random();
 
-  VoucherData get _gameRewardVoucher => availableVouchers.first;
+  late VoucherData _gameRewardVoucher;
+
+  Future<VoucherData> _selectGameReward({String? previousTitle}) async {
+    final hotels = await DBHelper.getHotelModels();
+    final flights = (await DBHelper.getTransportModels())
+        .where((transport) => transport.type.toLowerCase() == 'pesawat')
+        .toList(growable: false);
+    final rewards = <VoucherData>[
+      ...hotels
+          .where((hotel) => hotel.name.trim().isNotEmpty)
+          .map(_hotelVoucher),
+      ...flights
+          .where((flight) => flight.name.trim().isNotEmpty)
+          .map(_flightVoucher),
+    ];
+    if (rewards.isEmpty) {
+      throw StateError(
+        'Data hotel atau transportasi pesawat belum tersedia untuk voucher.',
+      );
+    }
+
+    final alternatives = previousTitle == null
+        ? rewards
+        : rewards
+            .where((voucher) => voucher.title != previousTitle)
+            .toList(growable: false);
+    final choices = alternatives.isEmpty ? rewards : alternatives;
+    return choices[_random.nextInt(choices.length)];
+  }
+
+  VoucherData _hotelVoucher(HotelModel hotel) => VoucherData(
+    discount: 'DISKON HOTEL 10%',
+    title: hotel.name,
+    merchant: '${hotel.city}, ${hotel.province}',
+    expiry: 'Berlaku sesuai ketentuan hotel',
+    reference: 'Hadiah Mini Game LokaCatch',
+    isUsed: false,
+  );
+
+  VoucherData _flightVoucher(TransportModel flight) => VoucherData(
+    discount: 'DISKON PESAWAT 5%',
+    title: flight.name,
+    merchant: flight.operatorName,
+    expiry: 'Berlaku sesuai ketentuan maskapai',
+    reference: 'Hadiah Mini Game LokaCatch',
+    isUsed: false,
+  );
 
   // Counter untuk ID unik objek
   int _objectIdCounter = 0;
@@ -143,6 +196,14 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   @override
   void initState() {
     super.initState();
+    _gameRewardVoucher = VoucherData(
+      discount: 'HADIAH MINI GAME',
+      title: 'Hadiah Hotel atau Tiket Pesawat',
+      merchant: 'LokaLuxe',
+      expiry: 'Berlaku sesuai ketentuan',
+      reference: 'Hadiah Mini Game LokaCatch',
+      isUsed: false,
+    );
     _initAnimations();
     _initGyroscope();
   }
@@ -214,6 +275,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       _isPlaying = true;
       _komodoHasFood = false;
       _lastCaughtFoodAsset = null;
+      _earnedVoucherCode = null;
+      _voucherSaveError = null;
     });
     _komodoMouthTimer?.cancel();
     unawaited(_startBackgroundMusic());
@@ -407,15 +470,66 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// Menangani logika kemenangan dan menampilkan voucher
   Future<void> _handleWin() async {
     try {
-      final notificationResult =
-          await GameNotificationService.showVoucherReward(_gameRewardVoucher);
+      _gameRewardVoucher = await _selectGameReward(
+        previousTitle: _gameRewardVoucher.title,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal memilih hadiah hotel/pesawat: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(
+          () => _voucherSaveError =
+              'Data hadiah hotel/pesawat tidak tersedia. '
+              'Muat ulang katalog hotel dan pesawat, lalu coba lagi.',
+        );
+        await _showWinDialog();
+      }
+      return;
+    }
+    final rewardVoucher = _gameRewardVoucher;
+
+    try {
+      final session = await SessionService.getSessionData();
+      if (session == null) {
+        throw const SupabaseAuthException(
+          'Silakan masuk ke akun sebelum menyimpan hadiah voucher.',
+        );
+      }
+      if (!SupabaseAuthService.isConfigured) {
+        throw const SupabaseAuthException(
+          'Supabase belum dikonfigurasi untuk menyimpan voucher.',
+        );
+      }
+      final code = await SupabaseAuthService.createVoucher(
+        accountEmail: session.email,
+        title: rewardVoucher.title,
+        discount: rewardVoucher.discount,
+      );
+      if (mounted) setState(() => _earnedVoucherCode = code);
+    } catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal menyimpan voucher ke Supabase: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(
+          () => _voucherSaveError =
+              'Voucher belum berhasil disimpan ke Supabase. '
+              'Periksa koneksi dan akun online, lalu hubungi dukungan jika '
+              'masalah berlanjut. ($error)',
+        );
+      }
+    }
+
+    try {
+      final notificationResult = await GameNotificationService.showVoucherReward(
+        rewardVoucher,
+      );
       if (notificationResult == VoucherNotificationResult.unsupported &&
           mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Selamat! Kamu mendapatkan ${_gameRewardVoucher.discount}: '
-              '${_gameRewardVoucher.title}',
+              'Selamat! Kamu mendapatkan ${rewardVoucher.discount}: '
+              '${rewardVoucher.title}',
             ),
             behavior: SnackBarBehavior.floating,
           ),
@@ -569,6 +683,30 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  if (_earnedVoucherCode != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Kode voucher: $_earnedVoucherCode',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'monospace',
+                        color: AppColors.primaryGreen,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  if (_voucherSaveError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _voucherSaveError!,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: AppColors.errorRed,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -903,10 +1041,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           if (_gyroscopeAvailable && _isPlaying) ...[
             const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xE617382D),
                 borderRadius: BorderRadius.circular(18),

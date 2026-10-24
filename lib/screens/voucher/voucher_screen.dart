@@ -1,11 +1,119 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../core/models/voucher_data.dart';
+import '../../core/models/supabase_voucher.dart';
+import '../../core/services/session_service.dart';
+import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
 
-class VoucherScreen extends StatelessWidget {
+class VoucherScreen extends StatefulWidget {
   const VoucherScreen({super.key});
+
+  @override
+  State<VoucherScreen> createState() => _VoucherScreenState();
+}
+
+class _VoucherScreenState extends State<VoucherScreen> {
+  List<SupabaseVoucher> _vouchers = const [];
+  final Set<int> _updatingVoucherIds = {};
+  String? _loadError;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadVouchers());
+  }
+
+  Future<void> _loadVouchers() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      final session = await SessionService.getSessionData();
+      if (session == null) {
+        throw const SupabaseAuthException(
+          'Masuk ke akun online untuk melihat voucher.',
+        );
+      }
+      if (!SupabaseAuthService.isConfigured) {
+        throw const SupabaseAuthException(
+          'Supabase belum dikonfigurasi untuk memuat voucher.',
+        );
+      }
+      final vouchers = await SupabaseAuthService.getActiveVouchers(
+        accountEmail: session.email,
+      );
+      if (!mounted) return;
+      setState(() => _vouchers = vouchers);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = error.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _useVoucher(SupabaseVoucher voucher) async {
+    if (_updatingVoucherIds.contains(voucher.id)) return;
+    setState(() => _updatingVoucherIds.add(voucher.id));
+    try {
+      final session = await SessionService.getSessionData();
+      if (session == null) {
+        throw const SupabaseAuthException(
+          'Masuk ke akun online untuk menggunakan voucher.',
+        );
+      }
+      await Clipboard.setData(ClipboardData(text: voucher.code));
+      if (!mounted) return;
+      setState(() {
+        _vouchers = _vouchers
+            .where((item) => item.id != voucher.id)
+            .toList(growable: false);
+      });
+      await SupabaseAuthService.markVoucherUsed(
+        accountEmail: session.email,
+        voucherId: voucher.id,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Kode ${voucher.code} berhasil disalin & digunakan!',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white),
+          ),
+          backgroundColor: AppColors.primaryGreen,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (!_vouchers.any((item) => item.id == voucher.id)) {
+          final restoredVouchers = List<SupabaseVoucher>.of(_vouchers)
+            ..add(voucher)
+            ..sort((a, b) => b.id.compareTo(a.id));
+          _vouchers = restoredVouchers;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Gagal menggunakan voucher: $error',
+            style: GoogleFonts.plusJakartaSans(color: Colors.white),
+          ),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _updatingVoucherIds.remove(voucher.id));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +172,7 @@ class VoucherScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Sertifikat Digital Blockchain',
+                          'Voucher Digital Anda',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -73,7 +181,7 @@ class VoucherScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Voucher terverifikasi permanen, anti-duplikasi & dapat ditukarkan di merchant mitra resmi.',
+                          'Voucher hadiah tersimpan di akun Supabase Anda dan siap digunakan.',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 11,
                             color: Colors.white.withValues(alpha: 0.8),
@@ -100,30 +208,64 @@ class VoucherScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            for (final voucher in voucherCatalog)
-              _buildVoucherCard(
-                context: context,
-                discount: voucher.discount,
-                title: voucher.title,
-                merchant: voucher.merchant,
-                expiry: voucher.expiry,
-                hash: voucher.reference,
-                isUsed: voucher.isUsed,
-              ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_loadError != null)
+              _buildLoadError()
+            else if (_vouchers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                child: Center(
+                  child: Text(
+                    'Belum ada voucher aktif.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              for (final voucher in _vouchers)
+                _buildVoucherCard(
+                  voucher: voucher,
+                  isUpdating: _updatingVoucherIds.contains(voucher.id),
+                ),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildLoadError() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(
+        children: [
+          Text(
+            _loadError!,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: AppColors.errorRed,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _loadVouchers,
+            child: const Text('Coba lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVoucherCard({
-    required BuildContext context,
-    required String discount,
-    required String title,
-    required String merchant,
-    required String expiry,
-    required String hash,
-    required bool isUsed,
+    required SupabaseVoucher voucher,
+    required bool isUpdating,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -149,16 +291,12 @@ class VoucherScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isUsed
-                        ? AppColors.surfaceCream
-                        : AppColors.primaryGreenSubtle,
+                    color: AppColors.primaryGreenSubtle,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     Icons.confirmation_number_outlined,
-                    color: isUsed
-                        ? AppColors.textMuted
-                        : AppColors.primaryGreen,
+                    color: AppColors.primaryGreen,
                     size: 24,
                   ),
                 ),
@@ -168,30 +306,26 @@ class VoucherScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        discount,
+                        voucher.discount,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.5,
-                          color: isUsed
-                              ? AppColors.textMuted
-                              : AppColors.primaryGreen,
+                          color: AppColors.primaryGreen,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        title,
+                        voucher.title,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: isUsed
-                              ? AppColors.textMuted
-                              : AppColors.textDark,
+                          color: AppColors.textDark,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        merchant,
+                        'Hadiah Mini Game LokaCatch',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           color: AppColors.textSecondary,
@@ -228,64 +362,62 @@ class VoucherScreen extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      expiry,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      hash,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontFamily: 'monospace',
-                        color: AppColors.accentGold,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                if (!isUsed)
-                  ElevatedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Kode voucher berhasil disalin untuk pembayaran!',
-                            style: GoogleFonts.plusJakartaSans(
-                              color: Colors.white,
-                            ),
-                          ),
-                          backgroundColor: AppColors.primaryGreen,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Kode voucher',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
                         ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      foregroundColor: AppColors.pureWhite,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 2),
+                      Text(
+                        voucher.code,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          color: AppColors.accentGold,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'Gunakan',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    ],
                   ),
+                ),
+                ElevatedButton(
+                  onPressed: isUpdating ? null : () => _useVoucher(voucher),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: AppColors.pureWhite,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: isUpdating
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          'Gunakan',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
               ],
             ),
           ),

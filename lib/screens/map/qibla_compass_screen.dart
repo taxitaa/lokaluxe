@@ -36,7 +36,8 @@ class QiblaCompassScreen extends StatefulWidget {
   State<QiblaCompassScreen> createState() => _QiblaCompassScreenState();
 }
 
-class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
+class _QiblaCompassScreenState extends State<QiblaCompassScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   StreamSubscription<Position>? _locationSubscription;
@@ -46,6 +47,9 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
   LatLng? _currentLocation;
   String? _sensorError;
   String? _locationError;
+  bool _isRequestingLocation = false;
+  bool _locationServiceDisabled = false;
+  bool _permissionPermanentlyDenied = false;
 
   double? get _qiblaBearing {
     final location = _currentLocation;
@@ -55,6 +59,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _magnetometerSubscription = magnetometerEventStream().listen((event) {
       _magneticField = event;
       _updateHeading();
@@ -63,46 +68,77 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
       _gravity = event;
       _updateHeading();
     }, onError: _handleSensorError);
-    _startLocationUpdates();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startLocationUpdates();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _magnetometerSubscription?.cancel();
     _accelerometerSubscription?.cancel();
     _locationSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _startLocationUpdates() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _currentLocation == null) {
+      _startLocationUpdates(requestPermission: false);
+    }
+  }
+
+  Future<void> _startLocationUpdates({bool requestPermission = true}) async {
+    if (_isRequestingLocation) return;
+    setState(() {
+      _isRequestingLocation = true;
+      _locationError = null;
+    });
+
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _setLocationError('Aktifkan layanan lokasi untuk menentukan kiblat.');
+        _setLocationError(
+          'Layanan lokasi perangkat sedang nonaktif. Aktifkan GPS agar arah kiblat sesuai posisi kamu.',
+          serviceDisabled: true,
+        );
         return;
       }
 
-      final permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission != LocationPermission.whileInUse &&
           permission != LocationPermission.always) {
-        _setLocationError(
-          'Izin lokasi belum aktif. Aktifkan izin lokasi di pengaturan perangkat.',
-        );
-        return;
+        if (permission == LocationPermission.denied && requestPermission) {
+          permission = await Geolocator.requestPermission();
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          _setLocationError(
+            'Izin lokasi ditolak permanen. Aktifkan izin lokasi untuk LokaLuxe melalui Pengaturan aplikasi.',
+            permanentlyDenied: true,
+          );
+          return;
+        }
+        if (permission != LocationPermission.whileInUse &&
+            permission != LocationPermission.always) {
+          _setLocationError(
+            'Kompas kiblat membutuhkan izin lokasi perangkat. Izinkan akses lokasi saat aplikasi digunakan.',
+          );
+          return;
+        }
       }
 
       final lastKnownPosition = await Geolocator.getLastKnownPosition();
       if (lastKnownPosition != null) _updateLocation(lastKnownPosition);
 
+      await _locationSubscription?.cancel();
       _locationSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           distanceFilter: 5,
         ),
-      ).listen(
-        _updateLocation,
-        onError: _handleLocationError,
-      );
+      ).listen(_updateLocation, onError: _handleLocationError);
 
       final currentPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -113,6 +149,8 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
       _updateLocation(currentPosition);
     } catch (error) {
       _handleLocationError(error);
+    } finally {
+      if (mounted) setState(() => _isRequestingLocation = false);
     }
   }
 
@@ -121,12 +159,22 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
     setState(() {
       _currentLocation = LatLng(position.latitude, position.longitude);
       _locationError = null;
+      _locationServiceDisabled = false;
+      _permissionPermanentlyDenied = false;
     });
   }
 
-  void _setLocationError(String message) {
+  void _setLocationError(
+    String message, {
+    bool serviceDisabled = false,
+    bool permanentlyDenied = false,
+  }) {
     if (!mounted) return;
-    setState(() => _locationError = message);
+    setState(() {
+      _locationError = message;
+      _locationServiceDisabled = serviceDisabled;
+      _permissionPermanentlyDenied = permanentlyDenied;
+    });
   }
 
   void _handleLocationError(Object error) {
@@ -134,6 +182,30 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
     _setLocationError(
       'Lokasi perangkat belum bisa didapatkan. Periksa GPS dan izin lokasi.',
     );
+  }
+
+  Future<void> _openLocationAction() async {
+    if (_locationServiceDisabled) {
+      final opened = await Geolocator.openLocationSettings();
+      if (!opened && mounted) {
+        _setLocationError(
+          'Pengaturan lokasi tidak dapat dibuka. Aktifkan GPS melalui Pengaturan perangkat.',
+          serviceDisabled: true,
+        );
+      }
+      return;
+    }
+    if (_permissionPermanentlyDenied) {
+      final opened = await Geolocator.openAppSettings();
+      if (!opened && mounted) {
+        _setLocationError(
+          'Pengaturan aplikasi tidak dapat dibuka. Aktifkan izin lokasi LokaLuxe secara manual.',
+          permanentlyDenied: true,
+        );
+      }
+      return;
+    }
+    await _startLocationUpdates();
   }
 
   void _handleSensorError(Object error) {
@@ -217,6 +289,21 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
                   color: AppColors.textSecondary,
                 ),
               ),
+              if (_locationError != null) ...[
+                const SizedBox(height: 16),
+                _buildLocationPermissionNotice(),
+              ] else ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Untuk menentukan arah kiblat sesuai posisi, izinkan akses lokasi saat aplikasi meminta izin.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    height: 1.4,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
               const SizedBox(height: 28),
               Center(
                 child: SizedBox(
@@ -302,16 +389,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              if (_locationError != null)
-                Text(
-                  _locationError!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    color: AppColors.errorRed,
-                  ),
-                )
-              else if (_sensorError != null)
+              if (_sensorError != null)
                 Text(
                   _sensorError!,
                   textAlign: TextAlign.center,
@@ -387,6 +465,90 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLocationPermissionNotice() {
+    final actionLabel = _locationServiceDisabled
+        ? 'Aktifkan GPS'
+        : _permissionPermanentlyDenied
+        ? 'Buka Pengaturan'
+        : 'Izinkan Lokasi';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.pureWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.location_on_rounded,
+                color: AppColors.primaryGreen,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _locationError!,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isRequestingLocation ? null : _openLocationAction,
+              icon: _isRequestingLocation
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      _locationServiceDisabled
+                          ? Icons.gps_fixed_rounded
+                          : _permissionPermanentlyDenied
+                          ? Icons.settings_rounded
+                          : Icons.my_location_rounded,
+                      size: 18,
+                    ),
+              label: Text(
+                _isRequestingLocation ? 'Meminta izin...' : actionLabel,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

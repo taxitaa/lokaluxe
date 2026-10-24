@@ -25,6 +25,7 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         createVoucherNotificationChannel()
+        TripReminderReceiver.cancelLegacyDailyEngagement(this)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

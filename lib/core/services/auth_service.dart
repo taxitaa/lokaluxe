@@ -172,6 +172,9 @@ class AuthService {
       );
     }
 
+    String? supabaseUserId;
+    String? supabaseAccessToken;
+    String? supabaseRefreshToken;
     try {
       // 1. Ambil data pengguna dari database berdasarkan email
       final user = await DBHelper.getUserByEmail(cleanEmail);
@@ -256,6 +259,9 @@ class AuthService {
         if (remoteId == null || remoteId.isEmpty) {
           return AuthResult.failure('Supabase tidak mengembalikan ID akun.');
         }
+        supabaseUserId = remoteId;
+        supabaseAccessToken = accessToken;
+        supabaseRefreshToken = remoteSession.refreshToken;
 
         final metadata = remoteSession.user['user_metadata'];
         final remoteFullName = metadata is Map<String, dynamic>
@@ -299,6 +305,16 @@ class AuthService {
         email: authenticatedUser.email,
         fullName: authenticatedUser.fullName,
       );
+      if (supabaseUserId != null && supabaseAccessToken != null) {
+        await SessionService.saveSupabaseTokens(
+          accountEmail: authenticatedUser.email,
+          userId: supabaseUserId,
+          accessToken: supabaseAccessToken,
+          refreshToken: supabaseRefreshToken,
+        );
+      } else {
+        await SessionService.clearSupabaseTokens();
+      }
       final bioEnabled = await DBHelper.getUserBiometricStatus(
         authenticatedUser.id!,
       );

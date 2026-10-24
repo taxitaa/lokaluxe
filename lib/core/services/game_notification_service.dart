@@ -1,7 +1,8 @@
-import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/voucher_data.dart';
 
@@ -11,10 +12,33 @@ class GameNotificationService {
   static const MethodChannel _channel = MethodChannel(
     'com.example.lokaluxe/game_notifications',
   );
+  static const _historyKey = 'game_notification_history';
+
+  static Future<List<Map<String, dynamic>>> getHistory() async {
+    final preferences = await SharedPreferences.getInstance();
+    final storedItems = preferences.getStringList(_historyKey) ?? const [];
+    return storedItems
+        .map((item) => jsonDecode(item))
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
 
   static Future<VoucherNotificationResult> showVoucherReward(
     VoucherData voucher,
   ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final history = preferences.getStringList(_historyKey) ?? <String>[];
+    history.insert(
+      0,
+      jsonEncode({
+        'title': 'Selamat! Voucher berhasil didapat',
+        'body': '${voucher.discount} — ${voucher.title}',
+        'createdAt': DateTime.now().toIso8601String(),
+        'type': 'game_reward',
+      }),
+    );
+    await preferences.setStringList(_historyKey, history.take(100).toList());
+
     if (defaultTargetPlatform != TargetPlatform.android) {
       return VoucherNotificationResult.unsupported;
     }

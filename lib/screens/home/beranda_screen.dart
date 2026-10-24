@@ -24,6 +24,7 @@ import '../itinerary/itinerary_screen.dart';
 import '../location/location_picker_modal.dart';
 import 'search_results_screen.dart';
 import 'popular_wisata_screen.dart';
+import 'notification_inbox_screen.dart';
 import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
@@ -270,35 +271,21 @@ class _BerandaScreenState extends State<BerandaScreen> {
                   // Notif + Avatar
                   Row(
                     children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: AppColors.pureWhite,
-                          shape: BoxShape.circle,
-                          boxShadow: _softShadow(0.05),
+                      IconButton(
+                        tooltip: 'Notifikasi',
+                        onPressed: () => _open(
+                          const NotificationInboxScreen(),
                         ),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            const Icon(
-                              Icons.notifications_none_rounded,
-                              size: 20,
-                              color: AppColors.textDark,
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 9,
-                              child: Container(
-                                width: 7,
-                                height: 7,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.accentGold,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.pureWhite,
+                          fixedSize: const Size(38, 38),
+                          shadowColor: Colors.black.withValues(alpha: 0.05),
+                          elevation: 1,
+                        ),
+                        icon: const Icon(
+                          Icons.notifications_none_rounded,
+                          size: 20,
+                          color: AppColors.textDark,
                         ),
                       ),
                       const SizedBox(width: 10),

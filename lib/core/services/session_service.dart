@@ -47,6 +47,10 @@ class SessionService {
   );
 
   static const String _keySessionToken = 'lokaluxe_session_token';
+  static const String _keySupabaseAccountEmail = 'lokaluxe_supabase_account_email';
+  static const String _keySupabaseUserId = 'lokaluxe_supabase_user_id';
+  static const String _keySupabaseAccessToken = 'lokaluxe_supabase_access_token';
+  static const String _keySupabaseRefreshToken = 'lokaluxe_supabase_refresh_token';
   static const String _keyBiometricEnabled = 'lokaluxe_biometric_enabled';
   static const String _keyFingerprintEnabled = 'lokaluxe_fingerprint_enabled';
   static const String _keyFaceIdEnabled = 'lokaluxe_faceid_enabled';
@@ -125,6 +129,49 @@ class SessionService {
   /// Menghapus token sesi secara aman saat logout
   static Future<void> clearSession() async {
     await _storage.delete(key: _keySessionToken);
+    await clearSupabaseTokens();
+  }
+
+  static Future<void> saveSupabaseTokens({
+    required String accountEmail,
+    required String userId,
+    required String accessToken,
+    String? refreshToken,
+  }) async {
+    await _storage.write(
+      key: _keySupabaseAccountEmail,
+      value: accountEmail.trim().toLowerCase(),
+    );
+    await _storage.write(key: _keySupabaseUserId, value: userId);
+    await _storage.write(key: _keySupabaseAccessToken, value: accessToken);
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await _storage.write(key: _keySupabaseRefreshToken, value: refreshToken);
+    }
+  }
+
+  static Future<String?> getSupabaseAccessToken(String accountEmail) async {
+    final savedEmail = await _storage.read(key: _keySupabaseAccountEmail);
+    if (savedEmail != accountEmail.trim().toLowerCase()) return null;
+    return _storage.read(key: _keySupabaseAccessToken);
+  }
+
+  static Future<String?> getSupabaseUserId(String accountEmail) async {
+    final savedEmail = await _storage.read(key: _keySupabaseAccountEmail);
+    if (savedEmail != accountEmail.trim().toLowerCase()) return null;
+    return _storage.read(key: _keySupabaseUserId);
+  }
+
+  static Future<String?> getSupabaseRefreshToken(String accountEmail) async {
+    final savedEmail = await _storage.read(key: _keySupabaseAccountEmail);
+    if (savedEmail != accountEmail.trim().toLowerCase()) return null;
+    return _storage.read(key: _keySupabaseRefreshToken);
+  }
+
+  static Future<void> clearSupabaseTokens() async {
+    await _storage.delete(key: _keySupabaseAccountEmail);
+    await _storage.delete(key: _keySupabaseUserId);
+    await _storage.delete(key: _keySupabaseAccessToken);
+    await _storage.delete(key: _keySupabaseRefreshToken);
   }
 
   /// Mengatur preferensi biometrik pengguna

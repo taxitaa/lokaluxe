@@ -23,9 +23,26 @@ class TripReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_REMINDER = "com.example.lokaluxe.TRIP_REMINDER"
+        const val ACTION_DAILY_ENGAGEMENT = "com.example.lokaluxe.DAILY_ENGAGEMENT"
         private const val PREFERENCES = "trip_reminder_preferences"
         private const val CHANNEL_ID = "trip_reminders"
+        private const val DAILY_PREFERENCES = "daily_app_notification_preferences"
+        private const val DAILY_NOTIFICATION_ID = 20261024
+        private const val DAILY_REQUEST_CODE = 20261024
         private val reminderOffsets = listOf(7, 5, 3, 0)
+
+        fun cancelLegacyDailyEngagement(context: Context) {
+            val alarmManager = context.getSystemService(AlarmManager::class.java)
+            val legacyAlarm = dailyPendingIntent(context)
+            alarmManager.cancel(legacyAlarm)
+            legacyAlarm.cancel()
+            context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .apply()
+            context.getSystemService(NotificationManager::class.java)
+                .cancel(DAILY_NOTIFICATION_ID)
+        }
 
         fun saveAndSchedule(
             context: Context,
@@ -58,6 +75,23 @@ class TripReminderReceiver : BroadcastReceiver() {
             val startDateMillis = preferences.getLong("startDateMillis", 0)
             if (tripId < 0 || destination.isNullOrBlank() || startDateMillis <= 0) return
             schedule(context, tripId, startDateMillis)
+        }
+
+        private fun dailyPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, TripReminderReceiver::class.java)
+                .setAction(ACTION_DAILY_ENGAGEMENT)
+            return PendingIntent.getBroadcast(
+                context,
+                DAILY_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                ) {
+                    PendingIntent.FLAG_IMMUTABLE
+                } else {
+                    0
+                }),
+            )
         }
 
         private fun cancelStoredReminders(context: Context) {

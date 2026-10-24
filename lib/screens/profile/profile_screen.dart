@@ -1,18 +1,19 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../core/database/db_helper.dart';
 import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/game_notification_service.dart';
 import '../../core/services/preferences_service.dart';
+import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/models/voucher_data.dart';
 import '../auth/login_screen.dart';
-import '../splash/splash_screen.dart';
+import '../../core/models/voucher_data.dart';
+import 'feedback_screen.dart';
 import 'security_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -23,11 +24,12 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final TextEditingController _feedbackController = TextEditingController();
+  final _feedbackController = TextEditingController();
   UserModel? _currentUser;
   Uint8List? _profilePhoto;
   int? _completedTrips;
   bool _statsLoadFailed = false;
+  bool _isSubmittingFeedback = false;
 
   @override
   void initState() {
@@ -35,13 +37,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserProfile();
   }
 
+  @override
+  void dispose() {
+    _feedbackController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadUserProfile() async {
     final user = await AuthService.checkSession();
     if (user != null && mounted) {
       Uint8List? photo;
       try {
-        final savedPhoto =
-            await PreferencesService.getProfilePhoto(_profilePhotoKey(user));
+        final savedPhoto = await PreferencesService.getProfilePhoto(
+          _profilePhotoKey(user),
+        );
         if (savedPhoto != null) photo = base64Decode(savedPhoto);
       } catch (error, stackTrace) {
         debugPrint('[Profile] Gagal memuat foto profil: $error');
@@ -86,7 +95,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       if (mounted) setState(() => _profilePhoto = photo);
     } on UnsupportedError catch (error) {
-      _showMessage(error.message ?? 'Fitur foto belum tersedia di perangkat ini.');
+      _showMessage(
+        error.message ?? 'Fitur foto belum tersedia di perangkat ini.',
+      );
     } on PlatformException catch (error, stackTrace) {
       debugPrint('[Profile] Gagal memilih foto profil: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -104,30 +115,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  @override
-  void dispose() {
-    _feedbackController.dispose();
-    super.dispose();
-  }
+  Future<void> _submitFeedback() async {
+    final user = _currentUser;
+    final comment = _feedbackController.text.trim();
+    if (_isSubmittingFeedback) return;
+    if (user == null) {
+      _showMessage('Sesi akun tidak ditemukan. Silakan masuk kembali.');
+      return;
+    }
+    if (comment.isEmpty) {
+      _showMessage('Tulis kritik atau saran terlebih dahulu.');
+      return;
+    }
+    if (comment.length > 2000) {
+      _showMessage('Kritik dan saran maksimal 2.000 karakter.');
+      return;
+    }
 
-  void _submitFeedback() {
-    if (_feedbackController.text.trim().isEmpty) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Kritik dan saran berhasil dikirim. Terima kasih!',
-          style: GoogleFonts.plusJakartaSans(color: Colors.white),
-        ),
-        backgroundColor: AppColors.primaryGreen,
-      ),
-    );
-    _feedbackController.clear();
+    setState(() => _isSubmittingFeedback = true);
+    try {
+      await SupabaseAuthService.submitPublicFeedback(
+        accountEmail: user.email,
+        comment: comment,
+      );
+      _feedbackController.clear();
+      if (mounted) {
+        _showMessage(
+          'Kritik dan saran terkirim dan sudah muncul di halamannya.',
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[Profile] Gagal mengirim kritik dan saran: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage(
+          error is SupabaseAuthException
+              ? error.message
+              : 'Kritik dan saran gagal dikirim. Coba lagi nanti.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmittingFeedback = false);
+    }
   }
 
   @override
@@ -138,7 +171,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayEmail = _currentUser?.email.isNotEmpty == true
         ? _currentUser!.email
         : 'amalia.azizah@travel.id';
-    final initials = displayName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
+    final initials = displayName
+        .trim()
+        .split(' ')
+        .map((e) => e.isNotEmpty ? e[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase();
 
     return Scaffold(
       backgroundColor: AppColors.warmCream,
@@ -319,7 +358,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       subtitle: 'PIN, fingerprint and Face ID',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SecurityScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const SecurityScreen(),
+                        ),
+                      ),
+                    ),
+                    const Divider(color: AppColors.borderLight, height: 1),
+                    _buildMenuItem(
+                      icon: Icons.forum_outlined,
+                      title: 'Kritik & saran',
+                      subtitle: 'Mata kuliah Pemrograman Aplikasi Mobile',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const FeedbackScreen(),
+                        ),
                       ),
                     ),
                   ],
@@ -328,45 +381,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // Course feedback form
-              Text(
-                'Kritik dan saran mata kuliah Pemrograman Mobile',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textDark,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Kritik dan saran',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
-
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.pureWhite,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.borderLight, width: 1),
+                  border: Border.all(color: AppColors.borderLight),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Sampaikan kritik dan saran untuk mata kuliah Pemrograman Mobile.',
+                      'Pemrograman Aplikasi Mobile',
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                         color: AppColors.textDark,
                       ),
                     ),
-                    const SizedBox(height: 8),
-
-                    const SizedBox(height: 12),
-
-                    // Feedback Input Field
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bagikan kritik atau saran untuk mata kuliah ini.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: _feedbackController,
+                      maxLength: 2000,
                       maxLines: 3,
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: AppColors.textDark,
                       ),
                       decoration: InputDecoration(
@@ -376,38 +435,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: AppColors.textMuted,
                         ),
                         filled: true,
-                        fillColor: AppColors.surfaceCream,
+                        fillColor: AppColors.warmCream,
                         contentPadding: const EdgeInsets.all(12),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.borderLight,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.primaryGreen,
+                            width: 1.2,
+                          ),
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 14),
-
-                    // Submit Feedback Button
                     SizedBox(
                       width: double.infinity,
-                      height: 46,
+                      height: 44,
                       child: ElevatedButton(
-                        onPressed: _submitFeedback,
+                        onPressed: _isSubmittingFeedback
+                            ? null
+                            : _submitFeedback,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primaryGreen,
                           foregroundColor: AppColors.pureWhite,
+                          disabledBackgroundColor: AppColors.primaryGreen
+                              .withValues(alpha: 0.55),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(23),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: Text(
-                          'Kirim kritik dan saran',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                        child: _isSubmittingFeedback
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.pureWhite,
+                                ),
+                              )
+                            : Text(
+                                'Kirim masukan',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -416,38 +497,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // Prototype Controls: Reset Onboarding & Keluar
               Center(
                 child: Column(
                   children: [
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        await PreferencesService.resetOnboarding();
-                        if (!context.mounted) return;
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const SplashScreen(),
-                          ),
-                          (route) => false,
-                        );
-                      },
-                      icon: const Icon(Icons.refresh_rounded, size: 16),
-                      label: Text(
-                        'Reset flow and return to the welcome screen',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primaryGreen,
-                        side: const BorderSide(color: AppColors.primaryGreen),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     TextButton(
                       onPressed: () async {
                         // Logout: Menghapus token sesi secara aman dan kembali ke Login

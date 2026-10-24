@@ -68,7 +68,7 @@ class MiniGameScreen extends StatelessWidget {
                 title: s.lokaCatch,
                 subtitle: s.gyroscope,
                 description: s.lokaCatchDesc,
-                emoji: '🧺',
+                emoji: '🦎',
                 badge: s.gyroscope,
                 badgeColor: AppColors.primaryGreen,
                 isNew: true,

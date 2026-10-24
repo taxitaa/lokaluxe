@@ -24,7 +24,7 @@ enum FallingObjectType {
 class FallingObject {
   final String id; // ID unik objek ini
   final FallingObjectType type;
-  final String emoji; // Representasi visual emoji
+  final String assetPath;
   double x; // Posisi horizontal (0.0 - 1.0, relatif terhadap lebar layar)
   double y; // Posisi vertikal saat ini (dalam pixels)
   double speed; // Kecepatan jatuh per frame (pixels/tick)
@@ -32,7 +32,7 @@ class FallingObject {
   FallingObject({
     required this.id,
     required this.type,
-    required this.emoji,
+    required this.assetPath,
     required this.x,
     required this.y,
     required this.speed,
@@ -46,7 +46,7 @@ class FallingObject {
 /// Layar mini game LokaCatch dengan kendali gyroscope
 ///
 /// Mekanisme:
-/// - Pemain memiringkan HP untuk menggerakkan keranjang
+/// - Pemain memiringkan HP untuk menggerakkan komodo
 /// - Tangkap 10 item kuliner untuk menang dan mendapatkan voucher
 /// - Hindari bom — jika kena langsung Game Over
 class LokaCatchScreen extends StatefulWidget {
@@ -62,9 +62,15 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // KONSTANTA GAME
   // ---------------------------------------------------
   static const int _maxItems = 10; // Item maks untuk menang
-  static const double _basketWidth = 80.0; // Lebar keranjang (px)
-  static const double _basketHeight = 50.0; // Tinggi keranjang (px)
-  static const double _objectSize = 44.0; // Ukuran objek jatuh (px)
+  static const double _komodoWidth = 128.0;
+  static const double _komodoHeight = 156.0;
+  static const String _komodoOpenAsset =
+      'assets/images/lokacatch_komodo_open.png';
+  static const String _komodoClosedAsset =
+      'assets/images/lokacatch_komodo_closed.png';
+  static const String _bombAsset = 'assets/images/lokacatch_bomb.png';
+  static const double _objectSize = 44.0; // Ukuran area tabrakan objek (px)
+  static const double _bombDisplaySize = 56.0;
   static const double _gyroSensitivity = 0.02; // Sensitivitas gyroscope
   static const double _manualMoveStep = 0.14;
   static const Duration _tickInterval = Duration(milliseconds: 16); // ~60 FPS
@@ -72,37 +78,47 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   // ---------------------------------------------------
   // DAFTAR OBJEK GAME
   // ---------------------------------------------------
-  /// Emoji hidangan khas Indonesia yang bisa ditangkap
-  static const List<String> _itemEmojis = [
-    '🍜',
-    '🍢',
-    '🍛',
-    '🍲',
-    '🍚',
-    '🥘',
-    '🥜',
-    '🍌',
-    '🍘',
-    '🥥',
-    '🌶️',
+  /// Aset hidangan khas Indonesia yang bisa ditangkap
+  static const List<String> _itemAssets = [
+    'assets/images/lokacatch_food_tofu.png',
+    'assets/images/lokacatch_food_dumplings.png',
+    'assets/images/lokacatch_food_sushi.png',
+    'assets/images/lokacatch_food_satay.png',
+    'assets/images/lokacatch_food_chicken_rice.png',
+    'assets/images/lokacatch_food_steamed_cake.png',
+    'assets/images/lokacatch_food_rice_cakes.png',
+    'assets/images/lokacatch_food_tumpeng.png',
+    'assets/images/lokacatch_food_rice_bowl.png',
   ];
 
   // ---------------------------------------------------
   // STATE GAME
   // ---------------------------------------------------
   List<FallingObject> _objects = []; // Semua objek aktif di layar
-  double _basketX = 0.5; // Posisi horizontal keranjang (0-1)
+  double _basketX = 0.5; // Posisi horizontal komodo (0-1)
   int _caughtItems = 0; // Jumlah item berhasil ditangkap
   bool _isGameOver = false; // Status game over
   bool _isWon = false; // Status menang (10 item tertangkap)
   bool _isPlaying = false; // Apakah permainan sedang berjalan
   bool _gyroscopeAvailable = true; // Apakah sensor gyroscope tersedia
+  bool _komodoHasFood = false;
+  String? _lastCaughtFoodAsset;
+
+  double get _komodoLeft {
+    if (_screenWidth <= 0) return 0;
+    final mouthOffset = _komodoWidth * 0.64;
+    return (_basketX * _screenWidth - mouthOffset).clamp(
+      -mouthOffset,
+      _screenWidth - mouthOffset,
+    );
+  }
 
   // ---------------------------------------------------
   // CONTROLLERS & STREAMS
   // ---------------------------------------------------
   Timer? _gameTimer; // Timer game loop utama
   Timer? _spawnTimer; // Timer untuk spawn objek baru
+  Timer? _komodoMouthTimer;
   StreamSubscription<GyroscopeEvent>? _gyroSubscription; // Listener gyroscope
 
   // Untuk animasi "item tertangkap" feedback
@@ -166,7 +182,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     }
   }
 
-  /// Handler event gyroscope — menggerakkan keranjang berdasarkan kemiringan
+  /// Handler event gyroscope — menggerakkan komodo berdasarkan kemiringan.
   ///
   /// [event.y] positif = miring kanan, negatif = miring kiri
   void _onGyroscopeEvent(GyroscopeEvent event) {
@@ -175,7 +191,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     setState(() {
       // Gerakan horizontal berdasarkan sumbu Y gyroscope
       _basketX += event.y * _gyroSensitivity;
-      // Clamp agar keranjang tidak keluar layar
+      // Clamp agar komodo tidak keluar layar.
       _basketX = _basketX.clamp(0.0, 1.0);
     });
   }
@@ -193,7 +209,10 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       _isGameOver = false;
       _isWon = false;
       _isPlaying = true;
+      _komodoHasFood = false;
+      _lastCaughtFoodAsset = null;
     });
+    _komodoMouthTimer?.cancel();
 
     // Game loop: update posisi objek & deteksi tabrakan setiap ~16ms
     _gameTimer = Timer.periodic(_tickInterval, (_) => _updateGame());
@@ -217,9 +236,9 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// Spawn satu objek baru di posisi acak bagian atas layar
   void _spawnObject() {
     final isBomb = _random.nextDouble() < 0.20; // 20% kemungkinan bom
-    final emoji = isBomb
-        ? '💣'
-        : _itemEmojis[_random.nextInt(_itemEmojis.length)];
+    final assetPath = isBomb
+        ? _bombAsset
+        : _itemAssets[_random.nextInt(_itemAssets.length)];
 
     // Kecepatan meningkat seiring progress (semakin banyak item ditangkap)
     final baseSpeed = 2.5 + (_caughtItems * 0.2);
@@ -229,7 +248,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       FallingObject(
         id: 'obj_${_objectIdCounter++}',
         type: isBomb ? FallingObjectType.bomb : FallingObjectType.item,
-        emoji: emoji,
+        assetPath: assetPath,
         x: 0.05 + _random.nextDouble() * 0.90, // Hindari spawn di tepi
         y: -_objectSize, // Mulai dari atas layar (di luar tampilan)
         speed: speed,
@@ -255,7 +274,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           continue;
         }
 
-        // Cek tabrakan dengan keranjang
+        // Cek tabrakan objek dengan komodo.
         if (_checkCollision(obj)) {
           toRemove.add(obj.id);
 
@@ -268,6 +287,14 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           } else {
             // === ITEM TERTANGKAP ===
             _caughtItems++;
+            _komodoHasFood = true;
+            _lastCaughtFoodAsset = obj.assetPath;
+            _komodoMouthTimer?.cancel();
+            _komodoMouthTimer = Timer(const Duration(milliseconds: 700), () {
+              if (mounted && !_isWon) {
+                setState(() => _komodoHasFood = false);
+              }
+            });
             _catchAnimController.forward(from: 0);
             HapticFeedback.lightImpact();
 
@@ -288,35 +315,44 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     if (didWin) _handleWin();
   }
 
-  /// Mengecek tabrakan antara objek jatuh dengan keranjang
+  /// Makanan hanya tertangkap saat menyentuh mulut komodo yang terbuka.
   ///
   /// Menggunakan AABB (Axis-Aligned Bounding Box) collision detection
   bool _checkCollision(FallingObject obj) {
     if (_screenWidth == 0) return false;
 
-    // Posisi tengah keranjang dalam pixels
-    final basketCenterX = _basketX * _screenWidth;
-    final basketTopY = _screenHeight - _basketHeight - 40.0; // 40px dari bawah
-
-    // Posisi objek dalam pixels
+    final komodoTop = _screenHeight - _komodoHeight - 18;
     final objX = obj.x * _screenWidth;
     final objY = obj.y;
-
-    // AABB collision
-    final basketLeft = basketCenterX - _basketWidth / 2;
-    final basketRight = basketCenterX + _basketWidth / 2;
-    final basketTop = basketTopY;
-    final basketBottom = basketTopY + _basketHeight;
 
     final objLeft = objX - _objectSize / 2;
     final objRight = objX + _objectSize / 2;
     final objTop = objY;
     final objBottom = objY + _objectSize;
 
-    return objRight > basketLeft &&
-        objLeft < basketRight &&
-        objBottom > basketTop &&
-        objTop < basketBottom;
+    if (obj.type == FallingObjectType.item) {
+      if (_komodoHasFood) return false;
+      final mouthCenterX = _komodoLeft + _komodoWidth * 0.64;
+      final mouthCenterY = komodoTop + _komodoHeight * 0.4;
+      final mouthHalfWidth = _komodoWidth * 0.24;
+      final mouthLeft = mouthCenterX - mouthHalfWidth;
+      final mouthRight = mouthCenterX + mouthHalfWidth;
+      final mouthTop = mouthCenterY - _komodoHeight * 0.105;
+      final mouthBottom = mouthCenterY + _komodoHeight * 0.126;
+      return objRight > mouthLeft &&
+          objLeft < mouthRight &&
+          objBottom > mouthTop &&
+          objTop < mouthBottom;
+    }
+
+    final bodyLeft = _komodoLeft + _komodoWidth * 0.2;
+    final bodyRight = _komodoLeft + _komodoWidth * 0.8;
+    final bodyTop = komodoTop + _komodoHeight * 0.62;
+    final bodyBottom = komodoTop + _komodoHeight;
+    return objRight > bodyLeft &&
+        objLeft < bodyRight &&
+        objBottom > bodyTop &&
+        objTop < bodyBottom;
   }
 
   /// Menangani logika kemenangan dan menampilkan voucher
@@ -539,6 +575,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   @override
   void dispose() {
     _stopGame();
+    _komodoMouthTimer?.cancel();
     _gyroSubscription?.cancel();
     _catchAnimController.dispose();
     super.dispose();
@@ -572,8 +609,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   // === OBJEK YANG JATUH ===
                   ..._buildFallingObjects(),
 
-                  // === KERANJANG PEMAIN ===
-                  _buildBasket(),
+                  // === KOMODO PEMAIN ===
+                  _buildKomodo(),
 
                   // === HUD (Heads-Up Display) ===
                   _buildHUD(),
@@ -612,7 +649,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       ),
       centerTitle: true,
       title: Text(
-        'LokaCatch 🧺',
+        'LokaCatch 🦎',
         style: GoogleFonts.plusJakartaSans(
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -646,8 +683,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// Render semua objek yang sedang jatuh
   List<Widget> _buildFallingObjects() {
     return _objects.map((obj) {
+      final displaySize = obj.type == FallingObjectType.bomb
+          ? _bombDisplaySize
+          : _objectSize;
       return Positioned(
-        left: obj.x * _screenWidth - _objectSize / 2,
+        left: obj.x * _screenWidth - displaySize / 2,
         top: obj.y,
         child: _buildObjectWidget(obj),
       );
@@ -657,57 +697,49 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// Widget untuk satu objek jatuh
   Widget _buildObjectWidget(FallingObject obj) {
     final isBomb = obj.type == FallingObjectType.bomb;
-    return Container(
-      width: _objectSize,
-      height: _objectSize,
-      decoration: isBomb
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.red.withValues(alpha: 0.15),
-              border: Border.all(
-                color: Colors.red.withValues(alpha: 0.5),
-                width: 1.5,
-              ),
-            )
-          : null,
-      child: Center(
-        child: Text(obj.emoji, style: TextStyle(fontSize: isBomb ? 28 : 30)),
-      ),
+    return SizedBox(
+      width: isBomb ? _bombDisplaySize : _objectSize,
+      height: isBomb ? _bombDisplaySize : _objectSize,
+      child: isBomb
+          ? Image.asset(_bombAsset, fit: BoxFit.contain)
+          : Image.asset(obj.assetPath, fit: BoxFit.contain),
     );
   }
 
-  /// Widget keranjang penangkap yang dikendalikan gyroscope
-  Widget _buildBasket() {
+  /// Komodo membuka mulut untuk menangkap makanan lalu menutupnya saat makan.
+  Widget _buildKomodo() {
     return Positioned(
-      bottom: 40,
-      left: _basketX * _screenWidth - _basketWidth / 2,
+      bottom: 18,
+      left: _komodoLeft,
       child: ScaleTransition(
         scale: _catchScaleAnim,
-        child: Container(
-          width: _basketWidth,
-          height: _basketHeight,
-          decoration: BoxDecoration(
-            color: AppColors.primaryGreen.withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(8),
-              topRight: Radius.circular(8),
-              bottomLeft: Radius.circular(14),
-              bottomRight: Radius.circular(14),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryGreen.withValues(alpha: 0.6),
-                blurRadius: 16,
-                spreadRadius: 2,
+        child: SizedBox(
+          width: _komodoWidth,
+          height: _komodoHeight,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Image.asset(
+                    _komodoHasFood ? _komodoClosedAsset : _komodoOpenAsset,
+                    key: ValueKey(_komodoHasFood),
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
+              if (_komodoHasFood && _lastCaughtFoodAsset != null)
+                Positioned(
+                  left: _komodoWidth * 0.48,
+                  top: _komodoHeight * 0.39,
+                  child: Image.asset(
+                    _lastCaughtFoodAsset!,
+                    width: 34,
+                    height: 34,
+                    fit: BoxFit.contain,
+                  ),
+                ),
             ],
-            border: Border.all(
-              color: AppColors.accentGold.withValues(alpha: 0.8),
-              width: 2,
-            ),
-          ),
-          child: const Center(
-            child: Text('🧺', style: TextStyle(fontSize: 28)),
           ),
         ),
       ),
@@ -772,7 +804,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'Miringkan HP untuk menggerakkan keranjang',
+                  'Miringkan HP untuk menggerakkan komodo',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 10,
                     color: Colors.white54,
@@ -796,7 +828,12 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('🧺', style: TextStyle(fontSize: 72)),
+              const Image(
+                image: AssetImage(_komodoOpenAsset),
+                width: 140,
+                height: 120,
+                fit: BoxFit.contain,
+              ),
               const SizedBox(height: 16),
               Text(
                 'LokaCatch',
@@ -840,7 +877,10 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                         'Geser layar atau gunakan tombol ◀ ▶',
                       ),
                     const SizedBox(height: 6),
-                    _buildHowToRow('🍛', 'Tangkap hidangan Indonesia (+1 item)'),
+                    _buildHowToRow(
+                      '🍛',
+                      'Tangkap hidangan Indonesia (+1 item)',
+                    ),
                     const SizedBox(height: 6),
                     _buildHowToRow('💣', 'Hindari bom! (Game Over seketika)'),
                     const SizedBox(height: 6),
@@ -941,7 +981,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              'Keranjangmu kena bom 💣\nItem berhasil ditangkap: $_caughtItems',
+              'Komodomu kena bom 💣\nItem berhasil ditangkap: $_caughtItems',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 14,
                 color: Colors.white70,

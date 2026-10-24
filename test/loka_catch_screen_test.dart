@@ -1,0 +1,49 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lokaluxe/screens/game/loka_catch_screen.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('LokaCatch uses the open-mouth Komodo instead of a basket', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: LokaCatchScreen()));
+    await tester.pump();
+
+    expect(find.text('LokaCatch 🦎'), findsOneWidget);
+    expect(find.text('🧺'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/images/lokacatch_komodo_open.png',
+      ),
+      findsNWidgets(2),
+    );
+    expect(
+      (await rootBundle.load('assets/images/lokacatch_komodo_closed.png'))
+          .lengthInBytes,
+      greaterThan(0),
+    );
+    for (final asset in [
+      'assets/images/lokacatch_bomb.png',
+      'assets/images/lokacatch_food_tofu.png',
+      'assets/images/lokacatch_food_dumplings.png',
+      'assets/images/lokacatch_food_sushi.png',
+      'assets/images/lokacatch_food_satay.png',
+      'assets/images/lokacatch_food_chicken_rice.png',
+      'assets/images/lokacatch_food_steamed_cake.png',
+      'assets/images/lokacatch_food_rice_cakes.png',
+      'assets/images/lokacatch_food_tumpeng.png',
+      'assets/images/lokacatch_food_rice_bowl.png',
+    ]) {
+      expect((await rootBundle.load(asset)).lengthInBytes, greaterThan(0));
+    }
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+}

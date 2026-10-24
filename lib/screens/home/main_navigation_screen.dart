@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../concierge/concierge_screen.dart';
-import '../map/navigator_map_screen.dart';
+import '../map/navigator_screen.dart';
 import '../profile/profile_screen.dart';
 import 'beranda_screen.dart';
 
@@ -40,7 +40,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         onTabChange: _onTabTapped,
         profileRefreshToken: _profileRefreshToken,
       ),
-      const NavigatorMapScreen(),
+      NavigatorScreen(onBack: () => _onTabTapped(0)),
       const ConciergeScreen(),
       const ProfileScreen(),
     ];

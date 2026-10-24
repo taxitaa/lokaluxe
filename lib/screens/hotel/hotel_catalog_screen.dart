@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/database/db_helper.dart';
 import '../../core/database/hotel_seed_data.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/map_places_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../itinerary/itinerary_screen.dart';
 
@@ -86,7 +88,9 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
 
   void _applyFilterAndSort() {
     final query = _searchController.text.trim().toLowerCase();
-    final queryTerms = query.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
+    final queryTerms = query
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty);
 
     List<HotelModel> result = _allHotels.where((hotel) {
       final searchableText =
@@ -112,7 +116,8 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
             if (!prov.contains('yogyakarta')) return false;
             break;
           case 'Jawa':
-            if (!prov.contains('jawa') && !prov.contains('banten')) return false;
+            if (!prov.contains('jawa') && !prov.contains('banten'))
+              return false;
             break;
           case 'Sumatera':
             if (!prov.contains('sumatera') &&
@@ -180,7 +185,9 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
         SnackBar(
           backgroundColor: AppColors.primaryGreen,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           content: Row(
             children: [
               const Icon(Icons.check_circle_rounded, color: Colors.white),
@@ -207,6 +214,23 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
               );
             },
           ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openHotelInGoogleMaps(HotelModel hotel) async {
+    final opened = await MapPlacesService.openPlaceInGoogleMaps(
+      placeName: hotel.name,
+      address: hotel.address,
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat membuka Google Maps di perangkat ini.'),
+          backgroundColor: AppColors.errorRed,
         ),
       );
     }
@@ -258,15 +282,16 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                             height: 220,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              height: 220,
-                              color: AppColors.surfaceCream,
-                              child: const Icon(
-                                Icons.hotel_rounded,
-                                size: 64,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  height: 220,
+                                  color: AppColors.surfaceCream,
+                                  child: const Icon(
+                                    Icons.hotel_rounded,
+                                    size: 64,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
                           ),
                         ),
                       ),
@@ -275,7 +300,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                       top: 12,
                       right: 28,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.65),
                           borderRadius: BorderRadius.circular(20),
@@ -283,7 +311,11 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.star_rounded, color: AppColors.starGold, size: 18),
+                            const Icon(
+                              Icons.star_rounded,
+                              color: AppColors.starGold,
+                              size: 18,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               '${hotel.stars}.0 Bintang',
@@ -301,7 +333,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                       top: 12,
                       left: 28,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primaryGreen.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(20),
@@ -450,12 +485,15 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                                 onPressed: () {
                                   Clipboard.setData(
                                     ClipboardData(
-                                      text: '${hotel.latitude}, ${hotel.longitude}',
+                                      text:
+                                          '${hotel.latitude}, ${hotel.longitude}',
                                     ),
                                   );
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Koordinat GPS berhasil disalin!'),
+                                      content: Text(
+                                        'Koordinat GPS berhasil disalin!',
+                                      ),
                                       duration: Duration(seconds: 2),
                                     ),
                                   );
@@ -487,9 +525,18 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                         runSpacing: 8,
                         children: [
                           _buildFacilityChip(Icons.wifi, 'Wi-Fi Gratis'),
-                          _buildFacilityChip(Icons.pool_rounded, 'Kolam Renang'),
-                          _buildFacilityChip(Icons.restaurant, 'Restoran & Sarapan'),
-                          _buildFacilityChip(Icons.room_service, 'Layanan 24 Jam'),
+                          _buildFacilityChip(
+                            Icons.pool_rounded,
+                            'Kolam Renang',
+                          ),
+                          _buildFacilityChip(
+                            Icons.restaurant,
+                            'Restoran & Sarapan',
+                          ),
+                          _buildFacilityChip(
+                            Icons.room_service,
+                            'Layanan 24 Jam',
+                          ),
                           _buildFacilityChip(Icons.spa, 'Spa & Relaksasi'),
                         ],
                       ),
@@ -503,51 +550,78 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                           color: AppColors.surfaceCream,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Harga Kamar Mulai',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12,
-                                    color: AppColors.textSecondary,
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Harga Kamar Mulai',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${context.watch<CurrencyProvider>().convertAndFormat(hotel.pricePerNight)} / night',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryGreen,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${context.watch<CurrencyProvider>().convertAndFormat(hotel.pricePerNight)} / night',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryGreen,
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _onHotelPicked(hotel);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryGreen,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: Text(
+                                    'Pilih Hotel Ini',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _onHotelPicked(hotel);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryGreen,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: Text(
-                                'Pilih Hotel Ini',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    _openHotelInGoogleMaps(hotel),
+                                icon: const Icon(Icons.map_outlined, size: 18),
+                                label: const Text('Lihat di Google Maps'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.primaryGreen,
+                                  side: const BorderSide(
+                                    color: AppColors.primaryGreen,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  textStyle: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
@@ -680,7 +754,9 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                     Text(
                       'Gagal memuat katalog hotel:\n${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.plusJakartaSans(color: AppColors.errorRed),
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AppColors.errorRed,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(
@@ -688,7 +764,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryGreen,
                       ),
-                      child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+                      child: const Text(
+                        'Coba Lagi',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ],
                 ),
@@ -720,7 +799,8 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                         onChanged: (_) => _applyFilterAndSort(),
                         style: GoogleFonts.plusJakartaSans(fontSize: 14),
                         decoration: InputDecoration(
-                          hintText: 'Cari nama hotel, kota, provinsi, atau jalan...',
+                          hintText:
+                              'Cari nama hotel, kota, provinsi, atau jalan...',
                           hintStyle: GoogleFonts.plusJakartaSans(
                             color: AppColors.textMuted,
                             fontSize: 13,
@@ -731,7 +811,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                           ),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear_rounded, size: 18),
+                                  icon: const Icon(
+                                    Icons.clear_rounded,
+                                    size: 18,
+                                  ),
                                   onPressed: () {
                                     _searchController.clear();
                                     _applyFilterAndSort();
@@ -776,8 +859,9 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                               checkmarkColor: Colors.white,
                               labelStyle: GoogleFonts.plusJakartaSans(
                                 fontSize: 12,
-                                fontWeight:
-                                    isSelected ? FontWeight.bold : FontWeight.w500,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
                                 color: isSelected
                                     ? Colors.white
                                     : AppColors.textDark,
@@ -885,21 +969,19 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                   )
                 else
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final hotel = _filteredHotels[index];
-                          return _buildHotelCard(hotel);
-                        },
-                        childCount: _filteredHotels.length,
-                      ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final hotel = _filteredHotels[index];
+                        return _buildHotelCard(hotel);
+                      }, childCount: _filteredHotels.length),
                     ),
                   ),
 
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 24),
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
           );
@@ -965,7 +1047,9 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
               Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
                     child: Image.network(
                       hotel.imageUrl,
                       height: 180,
@@ -990,7 +1074,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                     top: 12,
                     left: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primaryGreen.withValues(alpha: 0.85),
                         borderRadius: BorderRadius.circular(20),
@@ -1011,7 +1098,10 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                     top: 12,
                     right: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(20),
@@ -1019,7 +1109,11 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.star_rounded, color: AppColors.starGold, size: 16),
+                          const Icon(
+                            Icons.star_rounded,
+                            color: AppColors.starGold,
+                            size: 16,
+                          ),
                           const SizedBox(width: 3),
                           Text(
                             '${hotel.stars}.0',
@@ -1130,9 +1224,12 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                         Row(
                           children: [
                             OutlinedButton(
-                              onPressed: () => _showHotelDetailBottomSheet(hotel),
+                              onPressed: () =>
+                                  _showHotelDetailBottomSheet(hotel),
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: AppColors.borderLight),
+                                side: const BorderSide(
+                                  color: AppColors.borderLight,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),

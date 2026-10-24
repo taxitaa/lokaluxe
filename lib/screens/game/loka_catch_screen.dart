@@ -637,8 +637,13 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   /// AppBar game
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: const Color(0xFF0F1B14),
+      backgroundColor: const Color(0xFF17382D),
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: Border(
+        bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      ),
       leading: IconButton(
         icon: const Icon(
           Icons.chevron_left_rounded,
@@ -649,10 +654,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       ),
       centerTitle: true,
       title: Text(
-        'LokaCatch 🦎',
+        'LokaCatch',
         style: GoogleFonts.plusJakartaSans(
           fontSize: 18,
           fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
           color: Colors.white,
         ),
       ),
@@ -661,21 +667,26 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// Latar belakang permainan bergaya malam hari
   Widget _buildBackground() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF0F1B14), // Hijau gelap tua
-            Color(0xFF1A2D1F), // Hijau gelap medium
-            Color(0xFF0D1A12), // Hijau gelap bawah
-          ],
-        ),
-      ),
-      child: CustomPaint(
-        painter: _StarfieldPainter(),
-        size: Size(_screenWidth, _screenHeight),
+    return SizedBox.expand(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset('assets/images/Background.jpg', fit: BoxFit.cover),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF10251C).withValues(alpha: 0.25),
+                  Colors.transparent,
+                  const Color(0xFF10251C).withValues(alpha: 0.18),
+                ],
+                stops: const [0, 0.55, 1],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -754,63 +765,129 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       right: 16,
       child: Column(
         children: [
-          // Progress bar item
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                '$_caughtItems / $_maxItems',
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xE617382D),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  '$_caughtItems/$_maxItems',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: _caughtItems / _maxItems,
-                    minHeight: 8,
-                    backgroundColor: Colors.white.withValues(alpha: 0.15),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      AppColors.accentGold,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xB317382D),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: _caughtItems / _maxItems,
+                      minHeight: 8,
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.accentGold,
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                '🎫 VOUCHER',
-                style: GoogleFonts.plusJakartaSans(
-                  color: AppColors.accentGold,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xE617382D),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppColors.accentGold.withValues(alpha: 0.65),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.confirmation_number_rounded,
+                      color: AppColors.accentGold,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'VOUCHER',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
 
-          // Keterangan gyroscope
           if (_gyroscopeAvailable && _isPlaying) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.screen_rotation_rounded,
-                  size: 12,
-                  color: Colors.white54,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'Miringkan HP untuk menggerakkan komodo',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    color: Colors.white54,
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xE617382D),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10251C).withValues(alpha: 0.16),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.screen_rotation_rounded,
+                    size: 14,
+                    color: Color(0xFFD4E9A5),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    'Miringkan HP untuk menggerakkan komodo',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],

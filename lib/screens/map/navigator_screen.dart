@@ -1,67 +1,55 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/models/map_place_model.dart';
+import '../../core/models/location_model.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/services/location_provider.dart';
 import '../../core/services/map_places_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'qibla_compass_screen.dart';
 
 class NavigatorScreen extends StatefulWidget {
   final LatLng? initialTarget;
   final PlaceCategory? initialCategory;
+  final VoidCallback? onBack;
 
   const NavigatorScreen({
     super.key,
     this.initialTarget,
     this.initialCategory,
+    this.onBack,
   });
 
   @override
   State<NavigatorScreen> createState() => _NavigatorScreenState();
 }
 
-class _NavigatorScreenState extends State<NavigatorScreen>
-    with SingleTickerProviderStateMixin {
+class _NavigatorScreenState extends State<NavigatorScreen> {
   // Map Controller
   final MapController _mapController = MapController();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _mapSectionKey = GlobalKey();
 
   // Search & Filter State
   final TextEditingController _searchController = TextEditingController();
-  final DraggableScrollableController _sheetController =
-      DraggableScrollableController();
-
   PlaceCategory _selectedCategory = PlaceCategory.all;
   String _searchQuery = '';
   MapPlace? _selectedPlace;
   bool _isMapReady = false;
+  bool get _isSearching => _searchQuery.isNotEmpty;
 
-  // Location & Permission State
-  LatLng _userLocation = const LatLng(-6.1953, 106.8231); // Default Jakarta Pusat
-  bool _hasLocationPermission = false;
-  bool _isLoadingLocation = false;
-  bool _hasCenteredOnUser = false;
-  StreamSubscription<Position>? _positionStreamSub;
+  LatLng _userLocation = const LatLng(-6.1953, 106.8231);
+  String? _activeLocationId;
 
   // Data State
   List<MapPlace> _allPlaces = [];
   bool _isLoadingPlaces = true;
-  final Set<String> _favoritePlaceIds = {};
-
-  // Tile styles (Carto Voyager looks like modern Google Maps)
-  final String _cartoVoyagerUrl =
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png';
-  final List<String> _cartoSubdomains = const ['a', 'b', 'c', 'd'];
-
-  // Animation controller for pulse / blue dot radar
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  static const String _openStreetMapUrl =
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   @override
   void initState() {
@@ -72,403 +60,55 @@ class _NavigatorScreenState extends State<NavigatorScreen>
     if (widget.initialTarget != null) {
       _userLocation = widget.initialTarget!;
     }
-
-    // Pulse animation for blue dot GPS marker
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.6).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    // Initial data load
-    _loadPlaces();
-
-    // Trigger permission dialog and location check after first build frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkLocationPermissionOnStart();
-    });
   }
 
   @override
   void dispose() {
-    _positionStreamSub?.cancel();
-    _pulseController.dispose();
     _searchController.dispose();
-    _sheetController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // LOCATION & PERMISSION FLOW
-  // ──────────────────────────────────────────────────────────────────────────
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-  /// Saat halaman dibuka pertama kali, tampilkan pop-up izin lokasi
-  Future<void> _checkLocationPermissionOnStart() async {
-    // Periksa status izin saat ini
-    final status = await Permission.location.status;
+    final selectedLocation = context
+        .watch<LocationProvider?>()
+        ?.currentLocation;
+    final locationId = selectedLocation?.id ?? 'id-jakarta';
+    if (_activeLocationId == locationId) return;
 
-    if (status.isGranted) {
-      _hasLocationPermission = true;
-      await _detectCurrentLocation();
-    } else {
-      // Belum diberikan izin -> Tampilkan pop-up dialog izin LokaLuxe
+    _activeLocationId = locationId;
+    if (widget.initialTarget == null) {
+      _userLocation = _coordinatesFor(selectedLocation);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _showLocationPermissionDialog();
-    }
-  }
-
-  /// Dialog notifikasi izin akses lokasi ala LokaLuxe
-  void _showLocationPermissionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext ctx) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          elevation: 16,
-          backgroundColor: AppColors.pureWhite,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon Header bergaya GPS Radar
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.primaryGreenSubtle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryGreen.withValues(alpha: 0.15),
-                        blurRadius: 16,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.location_on_rounded,
-                      size: 40,
-                      color: AppColors.primaryGreen,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Judul dialog
-                Text(
-                  'Akses Lokasi Diperlukan',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Pertanyaan izin seperti diminta di prompt
-                Text(
-                  'Izinkan LokaLuxe mengakses lokasi perangkat ini?',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryGreen,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Penjelasan manfaat
-                Text(
-                  'LokaLuxe menggunakan lokasi GPS Anda untuk menampilkan peta interaktif, menandai posisi Anda dengan titik biru, serta merekomendasikan tempat wisata, hotel, dan restoran terdekat.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 26),
-
-                // Tombol Aksi
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _onPermissionDeclined();
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          side: const BorderSide(color: AppColors.borderLight),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: Text(
-                          'Nanti Saja',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          await _requestLocationPermission();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          backgroundColor: AppColors.primaryGreen,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: Text(
-                          'Izinkan Akses',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.pureWhite,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Memanggil runtime permission dari permission_handler & geolocator
-  Future<void> _requestLocationPermission() async {
-    setState(() => _isLoadingLocation = true);
-
-    try {
-      // Minta izin lokasi runtime
-      LocationPermission geolocatorPermission =
-          await Geolocator.checkPermission();
-
-      if (geolocatorPermission == LocationPermission.denied) {
-        geolocatorPermission = await Geolocator.requestPermission();
-      }
-
-      if (geolocatorPermission == LocationPermission.always ||
-          geolocatorPermission == LocationPermission.whileInUse) {
-        setState(() => _hasLocationPermission = true);
-        await _detectCurrentLocation();
-      } else if (geolocatorPermission == LocationPermission.deniedForever) {
-        _showPermissionSettingsDialog();
-      } else {
-        _onPermissionDeclined();
-      }
-    } catch (e) {
-      debugPrint('[NavigatorScreen] Error requesting permission: $e');
-      _onPermissionDeclined();
-    } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
-    }
-  }
-
-  void _onPermissionDeclined() {
-    if (!mounted) return;
-
-    setState(() {
-      _hasLocationPermission = false;
-      _isLoadingLocation = false;
+      _centerMapOn(_userLocation, zoom: 13.5);
+      _loadPlaces();
     });
-
-    // Ambil default dari LocationProvider jika ada
-    try {
-      final locProvider = context.read<LocationProvider>();
-      final city = locProvider.currentLocation.city.toLowerCase();
-      if (city.contains('bali')) {
-        _userLocation = const LatLng(-8.4095, 115.1889);
-      } else if (city.contains('surabaya')) {
-        _userLocation = const LatLng(-7.2575, 112.7521);
-      } else if (city.contains('medan')) {
-        _userLocation = const LatLng(3.5952, 98.6722);
-      }
-    } catch (_) {}
-
-    _centerMapOn(_userLocation, zoom: 13.5);
-    _loadPlaces();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Izin lokasi dilewati. Menampilkan lokasi default LokaLuxe.',
-            style: GoogleFonts.plusJakartaSans(fontSize: 13),
-          ),
-          backgroundColor: AppColors.charcoalDark,
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Aktifkan',
-            textColor: AppColors.accentGold,
-            onPressed: _requestLocationPermission,
-          ),
-        ),
-      );
-    }
   }
 
-  void _showPermissionSettingsDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Izin Lokasi Dinonaktifkan',
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Izin lokasi ditolak secara permanen. Silakan buka Pengaturan perangkat untuk mengaktifkan akses lokasi.',
-          style: GoogleFonts.plusJakartaSans(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              openAppSettings();
-            },
-            child: const Text(
-              'Buka Pengaturan',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
+  static const LatLng _jakartaCenter = LatLng(-6.1953, 106.8231);
+
+  LatLng _coordinatesFor(LocationModel? location) {
+    if (location == null || !location.isIndonesia) return _jakartaCenter;
+
+    return switch (location.id) {
+      'id-bali' => const LatLng(-8.4095, 115.1889),
+      'id-surabaya' => const LatLng(-7.2575, 112.7521),
+      'id-medan' => const LatLng(3.5952, 98.6722),
+      'id-makassar' => const LatLng(-5.1477, 119.4327),
+      'id-jayapura' => const LatLng(-2.5337, 140.7181),
+      _ => _jakartaCenter,
+    };
   }
 
-  /// Mendeteksi koordinat GPS terkini dan berpusat ke lokasi tersebut
-  Future<void> _detectCurrentLocation() async {
-    setState(() => _isLoadingLocation = true);
-
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Layanan GPS perangkat belum aktif.'),
-              backgroundColor: AppColors.errorRed,
-            ),
-          );
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
-
-      final newCoord = LatLng(position.latitude, position.longitude);
-
-      if (mounted) {
-        setState(() {
-          _userLocation = newCoord;
-          _hasLocationPermission = true;
-          _hasCenteredOnUser = true;
-        });
-
-        _centerMapOn(newCoord, zoom: 15.0);
-        await _loadPlaces();
-
-        if (!mounted) return;
-
-        // Mulai live stream posisi (opsional, jika perangkat bergerak)
-        _startLocationStream();
-
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.pureWhite,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Peta terpusat ke lokasi Anda sekarang!',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.successGreen,
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[NavigatorScreen] Gagal deteksi lokasi: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal mendapatkan koordinat GPS: $e'),
-            backgroundColor: AppColors.errorRed,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
-    }
-  }
-
-  void _startLocationStream() {
-    _positionStreamSub?.cancel();
-    _positionStreamSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 15,
-      ),
-    ).listen((pos) {
-      if (!mounted) return;
-      setState(() {
-        _userLocation = LatLng(pos.latitude, pos.longitude);
-      });
-    });
+  String _mapAreaName(LocationModel? location) {
+    if (location == null || !location.isIndonesia) return 'Jakarta';
+    return location.city;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -478,8 +118,9 @@ class _NavigatorScreenState extends State<NavigatorScreen>
   Future<void> _loadPlaces() async {
     setState(() => _isLoadingPlaces = true);
     try {
-      final places =
-          await MapPlacesService.getPlaces(userLocation: _userLocation);
+      final places = await MapPlacesService.getPlaces(
+        userLocation: _userLocation,
+      );
       if (mounted) {
         setState(() {
           _allPlaces = places;
@@ -494,6 +135,10 @@ class _NavigatorScreenState extends State<NavigatorScreen>
 
   List<MapPlace> get _filteredPlaces {
     return _allPlaces.where((place) {
+      if (!_isSearching && place.distanceTo(_userLocation) > 50000) {
+        return false;
+      }
+
       // 1. Filter kategori
       if (_selectedCategory != PlaceCategory.all &&
           place.category != _selectedCategory) {
@@ -504,14 +149,27 @@ class _NavigatorScreenState extends State<NavigatorScreen>
         final q = _searchQuery.toLowerCase();
         final matchName = place.name.toLowerCase().contains(q);
         final matchCity = place.city.toLowerCase().contains(q);
+        final matchAddress = place.address.toLowerCase().contains(q);
         final matchCat = place.category.labelId.toLowerCase().contains(q);
         final matchTags = place.tags.any((t) => t.toLowerCase().contains(q));
-        if (!matchName && !matchCity && !matchCat && !matchTags) return false;
+        if (!matchName &&
+            !matchCity &&
+            !matchAddress &&
+            !matchCat &&
+            !matchTags) {
+          return false;
+        }
       }
       return true;
-    }).toList()
-      ..sort((a, b) =>
-          a.distanceTo(_userLocation).compareTo(b.distanceTo(_userLocation)));
+    }).toList()..sort((a, b) {
+      if (_isSearching) {
+        final query = _searchQuery.toLowerCase();
+        final aStartsWith = a.name.toLowerCase().startsWith(query);
+        final bStartsWith = b.name.toLowerCase().startsWith(query);
+        if (aStartsWith != bStartsWith) return aStartsWith ? -1 : 1;
+      }
+      return a.distanceTo(_userLocation).compareTo(b.distanceTo(_userLocation));
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -529,6 +187,25 @@ class _NavigatorScreenState extends State<NavigatorScreen>
     _centerMapOn(place.coordinates, zoom: 15.8);
   }
 
+  void _onPlaceTap(MapPlace place) {
+    _onMarkerTap(place);
+    final mapContext = _mapSectionKey.currentContext;
+    if (mapContext != null) {
+      Scrollable.ensureVisible(
+        mapContext,
+        alignment: 0.08,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _openQiblaCompass() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const QiblaCompassScreen()));
+  }
+
   void _zoomIn() {
     final currentZoom = _mapController.camera.zoom;
     _mapController.move(_mapController.camera.center, currentZoom + 1);
@@ -537,32 +214,6 @@ class _NavigatorScreenState extends State<NavigatorScreen>
   void _zoomOut() {
     final currentZoom = _mapController.camera.zoom;
     _mapController.move(_mapController.camera.center, currentZoom - 1);
-  }
-
-  void _toggleFavorite(MapPlace place) {
-    setState(() {
-      if (_favoritePlaceIds.contains(place.id)) {
-        _favoritePlaceIds.remove(place.id);
-        place.isFavorite = false;
-      } else {
-        _favoritePlaceIds.add(place.id);
-        place.isFavorite = true;
-      }
-    });
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          place.isFavorite
-              ? '${place.name} ditambahkan ke favorit!'
-              : '${place.name} dihapus dari favorit',
-          style: GoogleFonts.plusJakartaSans(fontSize: 13),
-        ),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   /// Membuka tempat langsung di aplikasi Google Maps fisik
@@ -587,28 +238,251 @@ class _NavigatorScreenState extends State<NavigatorScreen>
 
   @override
   Widget build(BuildContext context) {
+    final selectedLocation = context
+        .watch<LocationProvider?>()
+        ?.currentLocation;
     final filtered = _filteredPlaces;
 
     return Scaffold(
-      backgroundColor: AppColors.surfaceCream,
-      body: Stack(
-        children: [
-          // 1. Interactive Fullscreen Map
-          _buildMapLayer(filtered),
-
-          // 2. Top Floating Navigation Controls
-          _buildTopFloatingBar(),
-
-          // 3. Right Floating Map Controls (Zoom, My Location)
-          _buildRightFloatingControls(),
-
-          // 4. Floating Preview Card (jika ada marker yang dipilih)
-          if (_selectedPlace != null)
-            _buildFloatingPreviewCard(_selectedPlace!),
-
-          // 5. Draggable Bottom Sheet dengan Filter Kategori & List Tempat
-          _buildDraggableBottomSheet(filtered),
-        ],
+      backgroundColor: AppColors.warmCream,
+      body: SafeArea(
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                decoration: const BoxDecoration(
+                  color: AppColors.pureWhite,
+                  border: Border(
+                    bottom: BorderSide(color: AppColors.borderLight),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Kembali',
+                      onPressed: () {
+                        final onBack = widget.onBack;
+                        if (onBack != null) {
+                          onBack();
+                        } else if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            'LokaLuxe Navigator',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Menjelajahi ${_mapAreaName(selectedLocation)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Kompas dan arah kiblat',
+                      onPressed: _openQiblaCompass,
+                      icon: const Icon(
+                        Icons.explore_rounded,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.pureWhite,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE3EAE5)),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) =>
+                        setState(() => _searchQuery = value.trim()),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      color: AppColors.textDark,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Cari tempat, wisata, atau kuliner',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        color: AppColors.textMuted,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: AppColors.primaryGreen,
+                      ),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Hapus pencarian',
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: _buildCircularCategoryRow(),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: ClipRRect(
+                  key: _mapSectionKey,
+                  borderRadius: BorderRadius.circular(24),
+                  child: SizedBox(
+                    height: 360,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: _buildMapLayer(filtered)),
+                        _buildRightFloatingControls(),
+                        Positioned(
+                          left: 10,
+                          bottom: 10,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AppColors.pureWhite.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              child: Text(
+                                '© OpenStreetMap contributors',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 9,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_selectedPlace != null)
+                          _buildFloatingPreviewCard(_selectedPlace!),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 30, 20, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _isSearching
+                            ? 'Hasil pencarian'
+                            : _selectedCategory == PlaceCategory.all
+                            ? 'Tempat di sekitar ${_mapAreaName(selectedLocation)}'
+                            : _getSectionTitle(),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${filtered.length} lokasi',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Muat ulang tempat',
+                      onPressed: _loadPlaces,
+                      icon: const Icon(
+                        Icons.refresh_rounded,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_isLoadingPlaces)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryGreen,
+                    ),
+                  ),
+                ),
+              )
+            else if (filtered.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                  child: Text(
+                    'Tidak ada tempat ditemukan. Coba kategori atau kata kunci lain.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) =>
+                        _buildPlaceListItemCard(filtered[index]),
+                    childCount: filtered.length,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -622,14 +496,12 @@ class _NavigatorScreenState extends State<NavigatorScreen>
       mapController: _mapController,
       options: MapOptions(
         initialCenter: _userLocation,
-        initialZoom: _hasCenteredOnUser ? 15.0 : 13.5,
+        initialZoom: 13.5,
         minZoom: 3.0,
         maxZoom: 19.0,
         onMapReady: () {
           setState(() => _isMapReady = true);
-          if (_hasCenteredOnUser) {
-            _centerMapOn(_userLocation, zoom: 15.0);
-          }
+          _centerMapOn(_userLocation, zoom: 13.5);
         },
         onTap: (_, _) {
           if (_selectedPlace != null) {
@@ -638,41 +510,16 @@ class _NavigatorScreenState extends State<NavigatorScreen>
         },
       ),
       children: [
-        // Tile Layer bergaya Google Maps / Carto Voyager
+        // OpenStreetMap tiles work without a private API key.
         TileLayer(
-          urlTemplate: _cartoVoyagerUrl,
-          subdomains: _cartoSubdomains,
-          userAgentPackageName: 'com.lokaluxe.app',
+          urlTemplate: _openStreetMapUrl,
+          userAgentPackageName: 'com.example.lokaluxe',
           maxZoom: 19,
         ),
 
-        // Circle Layer untuk radar radius pengguna jika ada izin
-        if (_hasLocationPermission)
-          CircleLayer(
-            circles: [
-              CircleMarker(
-                point: _userLocation,
-                radius: 120,
-                useRadiusInMeter: true,
-                color: const Color(0xFF1A73E8).withValues(alpha: 0.12),
-                borderColor: const Color(0xFF1A73E8).withValues(alpha: 0.35),
-                borderStrokeWidth: 1.5,
-              ),
-            ],
-          ),
-
-        // Marker Layer: Blue Dot GPS + Destinasi / Restoran
+        // Destination markers around the selected city.
         MarkerLayer(
           markers: [
-            // Current Location (Blue Dot Marker)
-            Marker(
-              point: _userLocation,
-              width: 60,
-              height: 60,
-              child: _buildCurrentLocationBlueDot(),
-            ),
-
-            // Pin Destinasi / Restoran
             ...places.map((place) {
               final isSelected = _selectedPlace?.id == place.id;
               return Marker(
@@ -689,55 +536,6 @@ class _NavigatorScreenState extends State<NavigatorScreen>
           ],
         ),
       ],
-    );
-  }
-
-  /// Indikator titik biru (blue dot marker) ala Google Maps dengan pulsing halo
-  Widget _buildCurrentLocationBlueDot() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, child) {
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Outer Pulsing Glow
-            Container(
-              width: 44 * _pulseAnimation.value,
-              height: 44 * _pulseAnimation.value,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF1A73E8)
-                    .withValues(alpha: 0.25 / _pulseAnimation.value),
-              ),
-            ),
-            // White ring
-            Container(
-              width: 22,
-              height: 22,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-            ),
-            // Solid Blue Core
-            Container(
-              width: 14,
-              height: 14,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF1A73E8),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -773,136 +571,9 @@ class _NavigatorScreenState extends State<NavigatorScreen>
                 ),
               ],
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: isSelected ? 24 : 20,
-            ),
+            child: Icon(icon, color: Colors.white, size: isSelected ? 24 : 20),
           ),
         ],
-      ),
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // FLOATING TOP CONTROLS (Back Button & Menu)
-  // ──────────────────────────────────────────────────────────────────────────
-
-  Widget _buildTopFloatingBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            // Tombol Kembali melayang
-            _floatingCircularButton(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Kembali',
-              onTap: () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                } else {
-                  setState(() {
-                    _selectedPlace = null;
-                    _searchQuery = '';
-                    _searchController.clear();
-                    _selectedCategory = PlaceCategory.all;
-                  });
-                }
-              },
-            ),
-            const SizedBox(width: 10),
-
-            // Bar Pencarian & Status Header Pill
-            Expanded(
-              child: Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.pureWhite,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _hasLocationPermission
-                          ? Icons.my_location_rounded
-                          : Icons.location_searching_rounded,
-                      size: 20,
-                      color: _hasLocationPermission
-                          ? const Color(0xFF1A73E8)
-                          : AppColors.primaryGreen,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'LokaLuxe Navigator',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          Text(
-                            _hasLocationPermission
-                                ? 'GPS Aktif • Koordinat Terkini'
-                                : 'Peta Interaktif Indonesia',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10.5,
-                              color: _hasLocationPermission
-                                  ? AppColors.successGreen
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_isLoadingLocation)
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.primaryGreen,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-
-            // Tombol Menu melayang
-            _floatingCircularButton(
-              icon: Icons.layers_outlined,
-              tooltip: 'Reset Filter',
-              onTap: () {
-                setState(() {
-                  _selectedCategory = PlaceCategory.all;
-                  _searchQuery = '';
-                  _searchController.clear();
-                  _selectedPlace = null;
-                });
-                _centerMapOn(_userLocation, zoom: 14.5);
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -950,54 +621,19 @@ class _NavigatorScreenState extends State<NavigatorScreen>
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () {
-                  if (!_hasLocationPermission) {
-                    _requestLocationPermission();
-                  } else {
-                    _detectCurrentLocation();
-                  }
-                },
+                onTap: () => _centerMapOn(_userLocation, zoom: 13.5),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Icon(
                     Icons.my_location_rounded,
                     size: 24,
-                    color: _hasLocationPermission
-                        ? const Color(0xFF1A73E8)
-                        : AppColors.primaryGreen,
+                    color: AppColors.primaryGreen,
                   ),
                 ),
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _floatingCircularButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: AppColors.pureWhite,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: AppColors.textDark, size: 22),
-        tooltip: tooltip,
-        onPressed: onTap,
       ),
     );
   }
@@ -1034,15 +670,65 @@ class _NavigatorScreenState extends State<NavigatorScreen>
   // FLOATING PREVIEW CARD
   // ──────────────────────────────────────────────────────────────────────────
 
+  Widget _buildPlacePhoto(
+    MapPlace place, {
+    required double width,
+    required double height,
+    required BorderRadius borderRadius,
+  }) {
+    final imageUrl = place.imageUrl.trim();
+    final placeholder = Container(
+      width: width,
+      height: height,
+      color: AppColors.primaryGreenSubtle,
+      child: Icon(
+        _getCategoryIcon(place.category),
+        color: AppColors.primaryGreen,
+        size: 30,
+      ),
+    );
+
+    if (imageUrl.isEmpty) {
+      return ClipRRect(borderRadius: borderRadius, child: placeholder);
+    }
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: AppColors.primaryGreenSubtle,
+              alignment: Alignment.center,
+              child: const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (_, _, _) => placeholder,
+        ),
+      ),
+    );
+  }
+
   Widget _buildFloatingPreviewCard(MapPlace place) {
     final currency = context.watch<CurrencyProvider>();
     final formattedDist = place.formattedDistanceTo(_userLocation);
-    final isFav = _favoritePlaceIds.contains(place.id) || place.isFavorite;
 
     return Positioned(
       left: 16,
       right: 16,
-      bottom: 270, // Posisi melayang tepat di atas draggable sheet yang menciut
+      bottom: 12,
       child: Material(
         elevation: 14,
         borderRadius: BorderRadius.circular(22),
@@ -1062,27 +748,13 @@ class _NavigatorScreenState extends State<NavigatorScreen>
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Gambar Thumbnail
                   Stack(
                     children: [
-                      ClipRRect(
+                      _buildPlacePhoto(
+                        place,
+                        width: 86,
+                        height: 86,
                         borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          width: 86,
-                          height: 86,
-                          child: Image.network(
-                            place.imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Container(
-                              color: AppColors.primaryGreenSubtle,
-                              child: Icon(
-                                _getCategoryIcon(place.category),
-                                color: AppColors.primaryGreen,
-                                size: 36,
-                              ),
-                            ),
-                          ),
-                        ),
                       ),
                       Positioned(
                         top: 4,
@@ -1116,7 +788,7 @@ class _NavigatorScreenState extends State<NavigatorScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Nama Tempat & Tombol Favorit
+                        // Nama tempat dan tombol tutup.
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1132,26 +804,10 @@ class _NavigatorScreenState extends State<NavigatorScreen>
                                 ),
                               ),
                             ),
-                            // Tombol Favorit
-                            InkWell(
-                              onTap: () => _toggleFavorite(place),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(
-                                  isFav
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  color: isFav
-                                      ? const Color(0xFFE63946)
-                                      : AppColors.textMuted,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
                             // Tombol Tutup Preview (X)
                             InkWell(
-                              onTap: () => setState(() => _selectedPlace = null),
+                              onTap: () =>
+                                  setState(() => _selectedPlace = null),
                               borderRadius: BorderRadius.circular(20),
                               child: const Padding(
                                 padding: EdgeInsets.all(4),
@@ -1277,300 +933,73 @@ class _NavigatorScreenState extends State<NavigatorScreen>
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // DRAGGABLE BOTTOM SHEET
-  // ──────────────────────────────────────────────────────────────────────────
-
-  Widget _buildDraggableBottomSheet(List<MapPlace> places) {
-    return DraggableScrollableSheet(
-      controller: _sheetController,
-      initialChildSize: 0.32,
-      minChildSize: 0.14,
-      maxChildSize: 0.88,
-      snap: true,
-      snapSizes: const [0.14, 0.32, 0.65, 0.88],
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.pureWhite,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 18,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          child: CustomScrollView(
-            controller: scrollController,
-            slivers: [
-              // Header Sheet (Drag Handle, Search Box, Kategori Melingkar)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Drag Handle Bar
-                      Center(
-                        child: Container(
-                          width: 44,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: AppColors.borderLight,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Search Place Input Box
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceCream,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: AppColors.borderInput,
-                            width: 1,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (val) {
-                            setState(() => _searchQuery = val.trim());
-                          },
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14,
-                            color: AppColors.textDark,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Search Place (wisata, resto, hotel...)',
-                            hintStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              color: AppColors.textMuted,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search_rounded,
-                              color: AppColors.primaryGreen,
-                              size: 22,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      size: 18,
-                                      color: AppColors.textMuted,
-                                    ),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() => _searchQuery = '');
-                                    },
-                                  )
-                                : null,
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Barisan Kategori Melingkar Horizontal (Amusement, Hotel, Park, Restaurants, Pool)
-                      _buildCircularCategoryRow(),
-                      const SizedBox(height: 16),
-
-                      // Judul & Jumlah Hasil
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _getSectionTitle(),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryGreenSubtle,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${places.length} tempat',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primaryGreen,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Daftar Kartu Tempat
-              if (_isLoadingPlaces)
-                const SliverToBoxAdapter(
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(40),
-                      child: CircularProgressIndicator(
-                        color: AppColors.primaryGreen,
-                      ),
-                    ),
-                  ),
-                )
-              else if (places.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 40,
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.location_off_rounded,
-                          size: 48,
-                          color: AppColors.textMuted.withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Tidak ada tempat ditemukan',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Coba kata kunci lain atau pilih kategori Semua.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 30),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final place = places[index];
-                        return _buildPlaceListItemCard(place);
-                      },
-                      childCount: places.length,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// Barisan Kategori Melingkar Horizontal Sesuai Request Prompt:
-  /// (Amusement, Hotel, Park, Restaurants, Pool)
+  /// Filter kategori horizontal untuk tempat yang tampil di peta dan daftar.
   Widget _buildCircularCategoryRow() {
     final categories = [
-      (PlaceCategory.amusement, 'Amusement', Icons.attractions_rounded, const Color(0xFF7B2CBF)),
-      (PlaceCategory.hotel, 'Hotel', Icons.hotel_rounded, const Color(0xFF2B5B84)),
-      (PlaceCategory.park, 'Park', Icons.park_rounded, const Color(0xFF2D6A4F)),
-      (PlaceCategory.restaurants, 'Restaurants', Icons.restaurant_rounded, const Color(0xFFE76F51)),
-      (PlaceCategory.pool, 'Pool', Icons.pool_rounded, const Color(0xFF0096C7)),
+      (PlaceCategory.all, 'Semua'),
+      (PlaceCategory.amusement, 'Hiburan'),
+      (PlaceCategory.hotel, 'Hotel'),
+      (PlaceCategory.park, 'Taman'),
+      (PlaceCategory.restaurants, 'Kuliner'),
+      (PlaceCategory.pool, 'Kolam'),
     ];
 
     return SizedBox(
-      height: 94,
+      height: 48,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: categories.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 14),
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final item = categories[index];
           final category = item.$1;
           final label = item.$2;
-          final icon = item.$3;
-          final color = item.$4;
           final isSelected = _selectedCategory == category;
 
           return GestureDetector(
             onTap: () {
               setState(() {
-                if (_selectedCategory == category) {
-                  _selectedCategory = PlaceCategory.all;
-                } else {
-                  _selectedCategory = category;
-                }
+                _selectedCategory = category;
                 _selectedPlace = null;
               });
             },
-            child: SizedBox(
-              width: 66,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isSelected ? color : color.withValues(alpha: 0.12),
-                      border: Border.all(
-                        color: isSelected ? color : Colors.transparent,
-                        width: 2.5,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.successGreen
+                    : AppColors.pureWhite,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.successGreen
+                      : const Color(0xFFD8DED9),
+                ),
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isSelected) ...[
+                      const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                        size: 18,
                       ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: color.withValues(alpha: 0.4),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ]
-                          : [],
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      label,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected ? Colors.white : AppColors.textDark,
+                      ),
                     ),
-                    child: Icon(
-                      icon,
-                      color: isSelected ? Colors.white : color,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight:
-                          isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? color : AppColors.textDark,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -1597,191 +1026,92 @@ class _NavigatorScreenState extends State<NavigatorScreen>
     }
   }
 
-  /// Kartu item tempat di dalam bottom sheet
+  /// Ringkasan tempat yang bisa dipilih untuk memusatkan peta.
   Widget _buildPlaceListItemCard(MapPlace place) {
-    final currency = context.watch<CurrencyProvider>();
     final formattedDist = place.formattedDistanceTo(_userLocation);
-    final isFav = _favoritePlaceIds.contains(place.id) || place.isFavorite;
+    final isSelected = _selectedPlace?.id == place.id;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: AppColors.pureWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isSelected
+              ? AppColors.primaryGreen.withValues(alpha: 0.45)
+              : const Color(0xFFEEF1EE),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => _onMarkerTap(place),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Thumbnail Gambar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: 76,
-                    height: 76,
-                    child: Image.network(
-                      place.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        color: AppColors.primaryGreenSubtle,
-                        child: Icon(
-                          _getCategoryIcon(place.category),
-                          color: AppColors.primaryGreen,
-                          size: 30,
+          borderRadius: BorderRadius.circular(22),
+          onTap: () => _onPlaceTap(place),
+          child: SizedBox(
+            height: 96,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _buildPlacePhoto(
+                    place,
+                    width: 68,
+                    height: 68,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          place.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textDark,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$formattedDist · ${place.category.labelId}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-
-                // Info Tempat
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Nama & Tombol Favorit
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              place.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textDark,
-                              ),
-                            ),
-                          ),
-                          InkWell(
-                            onTap: () => _toggleFavorite(place),
-                            child: Icon(
-                              isFav
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              size: 19,
-                              color: isFav
-                                  ? const Color(0xFFE63946)
-                                  : AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-
-                      // Rating & Jarak
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            size: 15,
-                            color: AppColors.starGold,
-                          ),
-                          const SizedBox(width: 3),
-                          Text(
-                            place.rating.toStringAsFixed(1),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '•  $formattedDist',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primaryGreen,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-
-                      // Alamat / Kota
-                      Text(
-                        place.address.isNotEmpty ? place.address : place.city,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Harga & Aksi Buka di Google Maps
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            place.price != null && place.price! > 0
-                                ? currency.convertAndFormat(place.price!)
-                                : (place.priceDisplay ?? 'Gratis'),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryGreen,
-                            ),
-                          ),
-                          // Tombol Cepat Google Maps
-                          InkWell(
-                            onTap: () => _openPlaceInGoogleMaps(place),
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryGreenSubtle,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.directions_rounded,
-                                    size: 14,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Maps',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  IconButton(
+                    tooltip: 'Buka ${place.name} di Google Maps',
+                    onPressed: () => _openPlaceInGoogleMaps(place),
+                    icon: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textMuted,
+                      size: 27,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 40,
+                      height: 40,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

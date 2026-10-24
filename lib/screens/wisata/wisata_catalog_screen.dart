@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/map_places_service.dart';
 import '../itinerary/itinerary_screen.dart';
 
 import 'package:google_fonts/google_fonts.dart';
@@ -451,6 +452,28 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
     );
   }
 
+  Future<void> _openWisataInGoogleMaps(Map<String, dynamic> wisata) async {
+    final opened = await MapPlacesService.openPlaceInGoogleMaps(
+      placeName: (wisata['nama_wisata'] ?? '').toString(),
+      address: (wisata['alamat'] ?? '').toString(),
+      latitude: _parseCoordinate(wisata['latitude']),
+      longitude: _parseCoordinate(wisata['longitude']),
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat membuka Google Maps di perangkat ini.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  double? _parseCoordinate(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
   // Tombol "Pilih"
   void _pilih(Map<String, dynamic> w) {
     final nama = (w['nama_wisata'] ?? '').toString();
@@ -606,6 +629,26 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openWisataInGoogleMaps(w),
+                  icon: const Icon(Icons.map_outlined, size: 18),
+                  label: const Text('Lihat di Google Maps'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _green,
+                    side: const BorderSide(color: _green),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ],

@@ -614,9 +614,25 @@ class MapPlacesService {
   /// Membuka lokasi di aplikasi Google Maps fisik di perangkat pengguna
   /// Menggunakan skema URL: https://www.google.com/maps/search/?api=1&query=Latitude,Longitude
   static Future<bool> openInGoogleMaps(double latitude, double longitude) async {
-    final Uri googleMapsUrl = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+    return openPlaceInGoogleMaps(
+      latitude: latitude,
+      longitude: longitude,
     );
+  }
+
+  static Future<bool> openPlaceInGoogleMaps({
+    String? placeName,
+    String? address,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final googleMapsUrl = googleMapsSearchUri(
+      placeName: placeName,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+    );
+    if (googleMapsUrl == null) return false;
 
     try {
       final bool launched = await launchUrl(
@@ -634,6 +650,33 @@ class MapPlacesService {
       debugPrint('[MapPlacesService] Gagal membuka Google Maps: $e');
       return false;
     }
+  }
+
+  static Uri? googleMapsSearchUri({
+    String? placeName,
+    String? address,
+    double? latitude,
+    double? longitude,
+  }) {
+    final hasValidCoordinates =
+        latitude != null &&
+        longitude != null &&
+        latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
+    final query = hasValidCoordinates
+        ? '$latitude,$longitude'
+        : [placeName, address]
+              .where((part) => part != null && part.trim().isNotEmpty)
+              .join(', ');
+    if (query.isEmpty) return null;
+    return Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query,
+    });
   }
 
   static String _fallbackImageForCategory(PlaceCategory category) {

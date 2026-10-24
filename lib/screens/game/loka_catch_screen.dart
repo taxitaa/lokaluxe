@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -120,6 +121,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   Timer? _spawnTimer; // Timer untuk spawn objek baru
   Timer? _komodoMouthTimer;
   StreamSubscription<GyroscopeEvent>? _gyroSubscription; // Listener gyroscope
+  final AudioPlayer _backgroundMusicPlayer = AudioPlayer();
+  int _backgroundMusicRequest = 0;
 
   // Untuk animasi "item tertangkap" feedback
   late AnimationController _catchAnimController;
@@ -213,6 +216,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       _lastCaughtFoodAsset = null;
     });
     _komodoMouthTimer?.cancel();
+    unawaited(_startBackgroundMusic());
 
     // Game loop: update posisi objek & deteksi tabrakan setiap ~16ms
     _gameTimer = Timer.periodic(_tickInterval, (_) => _updateGame());
@@ -231,6 +235,49 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     _spawnTimer?.cancel();
     _gameTimer = null;
     _spawnTimer = null;
+  }
+
+  Future<void> _startBackgroundMusic() async {
+    final request = ++_backgroundMusicRequest;
+    try {
+      await _backgroundMusicPlayer.stop();
+      if (!mounted || !_isPlaying || request != _backgroundMusicRequest) {
+        return;
+      }
+
+      await _backgroundMusicPlayer.setReleaseMode(ReleaseMode.loop);
+      await _backgroundMusicPlayer.setVolume(0.35);
+      if (!mounted || !_isPlaying || request != _backgroundMusicRequest) {
+        return;
+      }
+
+      await _backgroundMusicPlayer.play(
+        AssetSource('audio/audio.mp3'),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal memutar backsound: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _stopBackgroundMusic() async {
+    ++_backgroundMusicRequest;
+    try {
+      await _backgroundMusicPlayer.stop();
+    } catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal menghentikan backsound: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _disposeBackgroundMusic() async {
+    await _stopBackgroundMusic();
+    try {
+      await _backgroundMusicPlayer.dispose();
+    } catch (error, stackTrace) {
+      debugPrint('[LokaCatch] Gagal melepas pemutar backsound: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   /// Spawn satu objek baru di posisi acak bagian atas layar
@@ -283,6 +330,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             _isGameOver = true;
             _isPlaying = false;
             _stopGame();
+            unawaited(_stopBackgroundMusic());
             HapticFeedback.heavyImpact();
           } else {
             // === ITEM TERTANGKAP ===
@@ -303,6 +351,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               _isWon = true;
               _isPlaying = false;
               _stopGame();
+              unawaited(_stopBackgroundMusic());
               didWin = true;
             }
           }
@@ -575,6 +624,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
   @override
   void dispose() {
     _stopGame();
+    unawaited(_disposeBackgroundMusic());
     _komodoMouthTimer?.cancel();
     _gyroSubscription?.cancel();
     _catchAnimController.dispose();

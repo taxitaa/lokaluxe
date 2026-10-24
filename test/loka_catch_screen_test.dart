@@ -45,6 +45,10 @@ void main() {
       greaterThan(0),
     );
     expect(
+      (await rootBundle.load('assets/audio/audio.mp3')).lengthInBytes,
+      greaterThan(0),
+    );
+    expect(
       (await rootBundle.load('assets/images/lokacatch_komodo_closed.png'))
           .lengthInBytes,
       greaterThan(0),

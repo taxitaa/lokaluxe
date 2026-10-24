@@ -5,9 +5,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
+import '../../core/models/trip_itinerary_day_model.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/models/trip_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/trip_reminder_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../budget/budget_planner_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
@@ -35,6 +37,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   final TextEditingController _travelerController = TextEditingController();
   TripModel? _trip;
   List<Map<String, dynamic>> _items = [];
+  List<TripItineraryDay> _plannedDays = [];
   double _spent = 0;
   DateTime? _startDate;
   int? _durationDays;
@@ -62,11 +65,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     try {
       final trip = await DBHelper.getActiveTrip();
       final items = await DBHelper.getActiveTripItems();
+      final plannedDays = await DBHelper.getActiveTripItineraryDays();
       final spent = await DBHelper.getTotalExpenses();
       if (!mounted) return;
       setState(() {
         _trip = trip;
         _items = items;
+        _plannedDays = plannedDays;
         _spent = spent;
         _destinationController.text = trip?.destination ?? '';
         _startDate = DateTime.tryParse(trip?.dates ?? '');
@@ -145,8 +150,27 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         durationDays: durationDays,
         travelerCount: travelers,
       );
+      var reminderFailed = false;
+      final trip = await DBHelper.getActiveTrip();
+      if (trip?.id != null) {
+        try {
+          await TripReminderService.schedule(
+            tripId: trip!.id!,
+            destination: destination,
+            startDate: startDate,
+          );
+        } catch (error) {
+          debugPrint('[ItineraryScreen] Could not update trip reminders: $error');
+          reminderFailed = true;
+        }
+      }
       await _loadTrip();
-      _showMessage('Detail perjalanan berhasil disimpan.');
+      _showMessage(
+        reminderFailed
+            ? 'Detail trip tersimpan, tetapi pengingat gagal dijadwalkan.'
+            : 'Detail perjalanan berhasil disimpan.',
+        isError: reminderFailed,
+      );
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not save trip details: $error');
       _showMessage('Gagal menyimpan detail perjalanan.', isError: true);
@@ -564,6 +588,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 (item) => item['plannedDate'] == selectedDate.toIso8601String(),
               )
               .toList();
+    final matchingDays = _plannedDays
+        .where((day) => day.dayNumber == _selectedDay + 1)
+        .toList();
+    final plannedDay = matchingDays.isEmpty ? null : matchingDays.first;
 
     return Scaffold(
       backgroundColor: AppColors.warmCream,
@@ -604,15 +632,17 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         const SizedBox(height: 12),
                         _buildPendingSelectionNotice(),
                       ],
-                      if (trip != null) ...[
-                        const SizedBox(height: 20),
-                        _buildRemainingBudget(currency),
-                      ],
+                      const SizedBox(height: 20),
+                      _buildRemainingBudget(currency),
                       if (_hasSavedTripDetails) ...[
                         const SizedBox(height: 16),
                         _buildDaySelector(),
                         const SizedBox(height: 12),
-                        if (dayItems.isEmpty)
+                        if (plannedDay != null) ...[
+                          _buildGeneratedDayPlan(plannedDay),
+                          if (dayItems.isNotEmpty) const SizedBox(height: 12),
+                        ],
+                        if (dayItems.isEmpty && plannedDay == null)
                           _buildEmptyDay()
                         else
                           ...dayItems.map(
@@ -917,6 +947,61 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             'Belum ada pilihan untuk hari ini',
             style: GoogleFonts.plusJakartaSans(color: AppColors.textSecondary),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGeneratedDayPlan(TripItineraryDay day) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreenSubtle,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primaryGreen.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            day.title,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryGreenDark,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final activity in day.activities)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 16,
+                      color: AppColors.primaryGreen,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      activity,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

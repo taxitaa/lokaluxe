@@ -61,6 +61,64 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
+            TRIP_REMINDER_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleTripReminders" -> {
+                    val tripId = call.argument<Int>("tripId")
+                    val destination = call.argument<String>("destination")
+                    val startDateMillis =
+                        call.argument<Number>("startDateMillis")?.toLong()
+                    if (tripId == null ||
+                        destination.isNullOrBlank() ||
+                        startDateMillis == null
+                    ) {
+                        result.error(
+                            "invalid_trip_reminder",
+                            "Detail itinerary untuk pengingat tidak valid.",
+                            null,
+                        )
+                        return@setMethodCallHandler
+                    }
+
+                    TripReminderReceiver.saveAndSchedule(
+                        this,
+                        tripId,
+                        destination,
+                        startDateMillis,
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        requestPermissions(
+                            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                            REQUEST_NOTIFICATION_PERMISSION,
+                        )
+                        result.success("permission_requested")
+                    } else {
+                        result.success("scheduled")
+                    }
+                }
+                "cancelTripReminders" -> {
+                    val tripId = call.argument<Int>("tripId")
+                    if (tripId == null) {
+                        result.error(
+                            "invalid_trip_id",
+                            "ID trip untuk membatalkan pengingat tidak valid.",
+                            null,
+                        )
+                    } else {
+                        TripReminderReceiver.cancel(this, tripId)
+                        result.success("cancelled")
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
             PROFILE_PHOTO_CHANNEL,
         ).setMethodCallHandler { call, result ->
             if (call.method != "pickProfilePhoto") {
@@ -214,6 +272,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val REQUEST_NOTIFICATION_PERMISSION = 4102
         private const val REQUEST_PROFILE_PHOTO = 4103
         private const val PROFILE_PHOTO_CHANNEL = "com.example.lokaluxe/profile_photo"
+        private const val TRIP_REMINDER_CHANNEL = "com.example.lokaluxe/trip_reminders"
         private const val MAX_PHOTO_DIMENSION = 1280
     }
 }

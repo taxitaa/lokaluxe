@@ -7,6 +7,7 @@ import '../models/expense_model.dart';
 import '../models/hotel_model.dart';
 import '../models/transport_model.dart';
 import '../models/trip_model.dart';
+import '../models/trip_itinerary_day_model.dart';
 import '../models/user_model.dart';
 import '../security/password_hasher.dart';
 import 'hotel_seed_data.dart';
@@ -36,7 +37,7 @@ class DBHelper {
 
     final db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         // 1. Table Users dengan Enkripsi PBKDF2 / SHA-256 & Salt
         await _createUsersTable(db);
@@ -90,6 +91,7 @@ class DBHelper {
         await _createHotelsTable(db);
 
         await _createTripItemsTable(db);
+        await _createTripItineraryDaysTable(db);
 
         // Seed data hotel
         await _seedHotels(db);
@@ -199,6 +201,9 @@ class DBHelper {
               15000.0,
             ],
           );
+        }
+        if (oldVersion < 7) {
+          await _createTripItineraryDaysTable(db);
         }
       },
     );
@@ -636,9 +641,38 @@ class DBHelper {
   // --- TRIP & BUDGET OPERATIONS ---
   static Future<int> saveTrip(TripModel trip) async {
     final db = await database;
-    await db.update('trips', {'status': 'archived'},
-        where: 'status = ?', whereArgs: ['active']);
-    return await db.insert('trips', trip.toMap());
+    return db.transaction((txn) async {
+      await txn.update(
+        'trips',
+        {'status': 'archived'},
+        where: 'status = ?',
+        whereArgs: ['active'],
+      );
+      return txn.insert('trips', trip.toMap());
+    });
+  }
+
+  static Future<int> saveTripWithItinerary({
+    required TripModel trip,
+    required List<TripItineraryDay> days,
+  }) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      await txn.update(
+        'trips',
+        {'status': 'archived'},
+        where: 'status = ?',
+        whereArgs: ['active'],
+      );
+      final tripId = await txn.insert('trips', trip.toMap());
+      for (final day in days) {
+        await txn.insert('trip_itinerary_days', {
+          ...day.toMap(),
+          'tripId': tripId,
+        });
+      }
+      return tripId;
+    });
   }
 
   static Future<void> _createTripItemsTable(DatabaseExecutor db) async {
@@ -656,6 +690,35 @@ class DBHelper {
         FOREIGN KEY (tripId) REFERENCES trips(id)
       )
     ''');
+  }
+
+  static Future<void> _createTripItineraryDaysTable(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS trip_itinerary_days (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tripId INTEGER NOT NULL,
+        dayNumber INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        activities TEXT NOT NULL,
+        FOREIGN KEY (tripId) REFERENCES trips(id)
+      )
+    ''');
+  }
+
+  static Future<List<TripItineraryDay>> getActiveTripItineraryDays() async {
+    final trip = await getActiveTrip();
+    if (trip?.id == null) return [];
+
+    final db = await database;
+    final rows = await db.query(
+      'trip_itinerary_days',
+      where: 'tripId = ?',
+      whereArgs: [trip!.id],
+      orderBy: 'dayNumber ASC',
+    );
+    return rows.map(TripItineraryDay.fromMap).toList();
   }
 
   static Future<TripModel?> getActiveTrip() async {

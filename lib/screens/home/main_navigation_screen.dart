@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/services/localization_provider.dart';
 import '../concierge/concierge_screen.dart';
 import '../map/navigator_screen.dart';
 import '../profile/profile_screen.dart';
@@ -35,6 +37,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     final List<Widget> pages = [
       BerandaScreen(
         onTabChange: _onTabTapped,
@@ -71,25 +74,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   index: 0,
                   icon: Icons.explore_rounded,
                   activeIcon: Icons.explore_rounded,
-                  label: 'Explore',
+                  label: strings.explore,
                 ),
                 _buildNavItem(
                   index: 1,
                   icon: Icons.navigation_outlined,
                   activeIcon: Icons.navigation_rounded,
-                  label: 'Navigator',
+                  label: strings.navigator,
                 ),
                 _buildNavItem(
                   index: 2,
                   icon: Icons.auto_awesome_outlined,
                   activeIcon: Icons.auto_awesome,
-                  label: 'Concierge',
+                  label: strings.concierge,
                 ),
                 _buildNavItem(
                   index: 3,
                   icon: Icons.person_outline_rounded,
                   activeIcon: Icons.person_rounded,
-                  label: 'Profile',
+                  label: strings.profile,
                 ),
               ],
             ),

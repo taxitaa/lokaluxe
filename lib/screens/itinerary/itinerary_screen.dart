@@ -8,6 +8,7 @@ import '../../core/models/trip_itinerary_day_model.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/models/trip_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/trip_reminder_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../budget/budget_planner_screen.dart';
@@ -32,6 +33,19 @@ class ItineraryScreen extends StatefulWidget {
 }
 
 class _ItineraryScreenState extends State<ItineraryScreen> {
+  String _tr(String indonesian, String english) =>
+      context.read<LocalizationProvider>().strings.localized(
+        indonesian,
+        english,
+      );
+
+  String _categoryLabel(String category) => switch (category) {
+    'Transportasi sewa harian' => _tr('Sewa harian', 'Daily rental'),
+    'Transportasi' => _tr('Transportasi', 'Transportation'),
+    'Wisata' => _tr('Wisata', 'Attraction'),
+    _ => category,
+  };
+
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _travelerController = TextEditingController();
   TripModel? _trip;
@@ -86,7 +100,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       debugPrint('[ItineraryScreen] Could not load trip: $error');
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showMessage('Gagal memuat itinerary trip.');
+      _showMessage(
+        _tr('Gagal memuat itinerary trip.', 'Could not load the trip itinerary.'),
+      );
     }
   }
 
@@ -135,7 +151,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         travelers == null ||
         travelers < 1) {
       _showMessage(
-        'Isi tujuan, tanggal, durasi, dan jumlah orang terlebih dahulu.',
+        _tr(
+          'Isi tujuan, tanggal, durasi, dan jumlah orang terlebih dahulu.',
+          'Enter the destination, date, duration, and traveler count first.',
+        ),
         isError: true,
       );
       return;
@@ -166,13 +185,22 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       await _loadTrip();
       _showMessage(
         reminderFailed
-            ? 'Detail trip tersimpan, tetapi pengingat gagal dijadwalkan.'
-            : 'Detail perjalanan berhasil disimpan.',
+            ? _tr(
+                'Detail trip tersimpan, tetapi pengingat gagal dijadwalkan.',
+                'Trip details were saved, but the reminder could not be scheduled.',
+              )
+            : _tr(
+                'Detail perjalanan berhasil disimpan.',
+                'Trip details saved successfully.',
+              ),
         isError: reminderFailed,
       );
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not save trip details: $error');
-      _showMessage('Gagal menyimpan detail perjalanan.', isError: true);
+      _showMessage(
+        _tr('Gagal menyimpan detail perjalanan.', 'Could not save trip details.'),
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _isSavingDetails = false);
     }
@@ -223,7 +251,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         if (nights < 1) {
           _pendingSelectionHandled = true;
           _showMessage(
-            'Untuk memilih hotel, durasi trip harus minimal 2 hari.',
+            _tr(
+              'Untuk memilih hotel, durasi trip harus minimal 2 hari.',
+              'A trip must be at least 2 days long to add a hotel.',
+            ),
             isError: true,
           );
           return;
@@ -263,7 +294,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       if (title.isEmpty) {
         _pendingSelectionHandled = true;
         _showMessage(
-          'Pilihan katalog tidak memiliki nama yang valid.',
+          _tr(
+            'Pilihan katalog tidak memiliki nama yang valid.',
+            'The selected catalog item has no valid name.',
+          ),
           isError: true,
         );
         return;
@@ -283,20 +317,36 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       switch (result) {
         case TripItemSaveResult.saved:
           await _loadTrip();
-          _showMessage('$title ditambahkan ke itinerary dan budget trip.');
+          _showMessage(
+            _tr(
+              '$title ditambahkan ke itinerary dan budget trip.',
+              '$title was added to the itinerary and trip budget.',
+            ),
+          );
           break;
         case TripItemSaveResult.budgetExceeded:
           _showMessage(
-            'Budget trip tidak cukup untuk menambahkan $title.',
+            _tr(
+              'Budget trip tidak cukup untuk menambahkan $title.',
+              'The trip budget is not enough to add $title.',
+            ),
             isError: true,
           );
           break;
         case TripItemSaveResult.duplicate:
-          _showMessage('$title sudah ada di itinerary hari ini.');
+          _showMessage(
+            _tr(
+              '$title sudah ada di itinerary hari ini.',
+              '$title is already on today’s itinerary.',
+            ),
+          );
           break;
         case TripItemSaveResult.noActiveTrip:
           _showMessage(
-            'Buat budget trip terlebih dahulu sebelum memilih wisata.',
+            _tr(
+              'Buat budget trip terlebih dahulu sebelum memilih wisata.',
+              'Create a trip budget before choosing an attraction.',
+            ),
             isError: true,
           );
           break;
@@ -307,7 +357,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       );
       debugPrintStack(stackTrace: stackTrace);
       _pendingSelectionHandled = true;
-      _showMessage('Gagal menyimpan pilihan ke itinerary.', isError: true);
+      _showMessage(
+        _tr(
+          'Gagal menyimpan pilihan ke itinerary.',
+          'Could not save the selection to the itinerary.',
+        ),
+        isError: true,
+      );
     } finally {
       _isSavingPendingSelection = false;
     }
@@ -316,7 +372,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   Future<void> _openCatalogChooser() async {
     if (!_hasSavedTripDetails) {
       _showMessage(
-        'Simpan tujuan dan jadwal perjalanan terlebih dahulu.',
+        _tr(
+          'Simpan tujuan dan jadwal perjalanan terlebih dahulu.',
+          'Save your destination and trip schedule first.',
+        ),
         isError: true,
       );
       return;
@@ -335,7 +394,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Tambahkan ke itinerary',
+                  _tr('Tambahkan ke itinerary', 'Add to itinerary'),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
@@ -345,22 +404,25 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 const SizedBox(height: 12),
                 _catalogOption(
                   context,
-                  'Hotel',
-                  'Di ${_trip!.destination} · kapasitas 2 orang per kamar',
+                  _tr('Hotel', 'Hotel'),
+                  _tr(
+                    'Di ${_trip!.destination} · kapasitas 2 orang per kamar',
+                    'In ${_trip!.destination} · capacity: 2 people per room',
+                  ),
                   Icons.hotel_rounded,
                   'hotel',
                 ),
                 _catalogOption(
                   context,
-                  'Transportasi',
-                  'Pilih kendaraan atau perjalanan',
+                  _tr('Transportasi', 'Transportation'),
+                  _tr('Pilih kendaraan atau perjalanan', 'Choose a vehicle or trip'),
                   Icons.directions_car_rounded,
                   'transport',
                 ),
                 _catalogOption(
                   context,
-                  'Wisata',
-                  'Pilih tempat wisata dan aktivitas',
+                  _tr('Wisata', 'Attractions'),
+                  _tr('Pilih tempat wisata dan aktivitas', 'Choose attractions and activities'),
                   Icons.attractions_rounded,
                   'wisata',
                 ),
@@ -417,7 +479,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       final nights = ((trip.durationDays ?? 1) - 1).clamp(0, 365).toInt();
       if (nights < 1) {
         _showMessage(
-          'Untuk memilih hotel, durasi trip harus minimal 2 hari.',
+          _tr(
+            'Untuk memilih hotel, durasi trip harus minimal 2 hari.',
+            'A trip must be at least 2 days long to add a hotel.',
+          ),
           isError: true,
         );
         return;
@@ -489,24 +554,50 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       switch (result) {
         case TripItemSaveResult.saved:
           await _loadTrip();
-          _showMessage('$title ditambahkan ke itinerary.');
+          _showMessage(
+            _tr(
+              '$title ditambahkan ke itinerary.',
+              '$title was added to the itinerary.',
+            ),
+          );
           break;
         case TripItemSaveResult.budgetExceeded:
-          _showMessage('Pilihan ini melebihi sisa budget trip.', isError: true);
+          _showMessage(
+            _tr(
+              'Pilihan ini melebihi sisa budget trip.',
+              'This item exceeds the remaining trip budget.',
+            ),
+            isError: true,
+          );
           break;
         case TripItemSaveResult.duplicate:
           _showMessage(
-            'Pilihan ini sudah ada pada hari yang dipilih.',
+            _tr(
+              'Pilihan ini sudah ada pada hari yang dipilih.',
+              'This item is already planned for the selected day.',
+            ),
             isError: true,
           );
           break;
         case TripItemSaveResult.noActiveTrip:
-          _showMessage('Buat budget trip terlebih dahulu.', isError: true);
+          _showMessage(
+            _tr(
+              'Buat budget trip terlebih dahulu.',
+              'Create a trip budget first.',
+            ),
+            isError: true,
+          );
           break;
       }
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not add itinerary item: $error');
-      _showMessage('Gagal menambahkan pilihan ke itinerary.', isError: true);
+      _showMessage(
+        _tr(
+          'Gagal menambahkan pilihan ke itinerary.',
+          'Could not add the item to the itinerary.',
+        ),
+        isError: true,
+      );
     }
   }
 
@@ -520,11 +611,20 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     try {
       final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened) {
-        _showMessage('Tidak dapat membuka aplikasi peta.', isError: true);
+        _showMessage(
+          _tr('Tidak dapat membuka aplikasi peta.', 'Could not open the maps app.'),
+          isError: true,
+        );
       }
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not open map: $error');
-      _showMessage('Tidak dapat membuka aplikasi peta.', isError: true);
+      _showMessage(
+        _tr(
+          'Tidak dapat membuka aplikasi peta.',
+          'Could not open the maps app.',
+        ),
+        isError: true,
+      );
     }
   }
 
@@ -532,7 +632,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     final itemId = (item['id'] as num?)?.toInt();
     if (itemId == null) {
       _showMessage(
-        'Pilihan itinerary tidak memiliki ID yang valid.',
+        _tr(
+          'Pilihan itinerary tidak memiliki ID yang valid.',
+          'This itinerary item has an invalid ID.',
+        ),
         isError: true,
       );
       return;
@@ -540,16 +643,21 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Hapus pilihan?'),
-        content: Text('Hapus ${item['title']} dari itinerary?'),
+        title: Text(_tr('Hapus pilihan?', 'Remove item?')),
+        content: Text(
+          _tr(
+            'Hapus ${item['title']} dari itinerary?',
+            'Remove ${item['title']} from the itinerary?',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
+            child: Text(_tr('Batal', 'Cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Hapus'),
+            child: Text(_tr('Hapus', 'Remove')),
           ),
         ],
       ),
@@ -559,10 +667,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     try {
       await DBHelper.deleteActiveTripItem(itemId);
       await _loadTrip();
-      _showMessage('Pilihan dihapus dan sisa budget diperbarui.');
+      _showMessage(
+        _tr(
+          'Pilihan dihapus dan sisa budget diperbarui.',
+          'Item removed and remaining budget updated.',
+        ),
+      );
     } catch (error) {
       debugPrint('[ItineraryScreen] Could not delete itinerary item: $error');
-      _showMessage('Gagal menghapus pilihan itinerary.', isError: true);
+      _showMessage(
+        _tr('Gagal menghapus pilihan itinerary.', 'Could not remove the itinerary item.'),
+        isError: true,
+      );
     }
   }
 
@@ -572,6 +688,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   @override
   Widget build(BuildContext context) {
     final currency = context.watch<CurrencyProvider>();
+    final strings = context.watch<LocalizationProvider>().strings;
     final trip = _trip;
     final selectedDate = _startDate == null
         ? null
@@ -606,7 +723,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         ),
         centerTitle: true,
         title: Text(
-          'Trip itinerary',
+          strings.itineraryTitle,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -665,8 +782,11 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         icon: const Icon(Icons.add_rounded),
                         label: Text(
                           _isOpeningCatalog
-                              ? 'Membuka katalog...'
-                              : 'Cari hotel, transportasi, atau wisata',
+                              ? _tr('Membuka katalog...', 'Opening catalog...')
+                              : _tr(
+                                  'Cari hotel, transportasi, atau wisata',
+                                  'Find hotels, transportation, or attractions',
+                                ),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -702,7 +822,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Tentukan budget trip terlebih dahulu',
+              _tr(
+                'Tentukan budget trip terlebih dahulu',
+                'Set a trip budget first',
+              ),
               textAlign: TextAlign.center,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 18,
@@ -711,15 +834,20 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Setelah budget disimpan, kamu bisa mengisi tujuan dan menyusun itinerary.',
+            Text(
+              _tr(
+                'Setelah budget disimpan, kamu bisa mengisi tujuan dan menyusun itinerary.',
+                'After saving a budget, you can enter your destination and build an itinerary.',
+              ),
               textAlign: TextAlign.center,
             ),
             if (_hasPendingSelection) ...[
               const SizedBox(height: 12),
               Text(
-                '${_pendingSelectionTitle} sudah dipilih dan akan ditambahkan '
-                'setelah budget serta detail trip disimpan.',
+                _tr(
+                  '${_pendingSelectionTitle} sudah dipilih dan akan ditambahkan setelah budget serta detail trip disimpan.',
+                  '${_pendingSelectionTitle} is selected and will be added after you save the budget and trip details.',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
@@ -737,7 +865,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 );
                 await _loadTrip();
               },
-              child: const Text('Buat budget trip'),
+              child: Text(_tr('Buat budget trip', 'Create trip budget')),
             ),
           ],
         ),
@@ -756,8 +884,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         border: Border.all(color: AppColors.accentGold.withValues(alpha: 0.4)),
       ),
       child: Text(
-        '$title sudah dipilih. Lengkapi dan simpan detail trip untuk '
-        'menambahkannya ke itinerary dan budget.',
+        _tr(
+          '$title sudah dipilih. Lengkapi dan simpan detail trip untuk menambahkannya ke itinerary dan budget.',
+          '$title is selected. Complete and save your trip details to add it to the itinerary and budget.',
+        ),
         style: GoogleFonts.plusJakartaSans(
           fontSize: 12,
           color: AppColors.textDark,
@@ -780,7 +910,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'SISA BUDGET TRIP',
+            _tr('SISA BUDGET TRIP', 'TRIP BUDGET REMAINING'),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -798,7 +928,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Terpakai ${currency.convertAndFormat(_spent)} dari ${currency.convertAndFormat(_trip?.targetBudget ?? 0)}',
+            _tr(
+              'Terpakai ${currency.convertAndFormat(_spent)} dari ${currency.convertAndFormat(_trip?.targetBudget ?? 0)}',
+              'Spent ${currency.convertAndFormat(_spent)} of ${currency.convertAndFormat(_trip?.targetBudget ?? 0)}',
+            ),
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: AppColors.textSecondary,
@@ -810,8 +943,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   }
 
   Widget _buildTripDetailsForm() {
+    final strings = context.read<LocalizationProvider>().strings;
     final dateText = _startDate == null
-        ? 'Pilih tanggal mulai'
+        ? _tr('Pilih tanggal mulai', 'Choose a start date')
         : _dateLabel(_startDate!);
     return Container(
       padding: const EdgeInsets.all(18),
@@ -824,7 +958,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Detail perjalanan',
+            strings.tripDetails,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -835,8 +969,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           TextField(
             controller: _destinationController,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Mau ke mana?',
+            decoration: InputDecoration(
+              labelText: strings.destinationHint,
               prefixIcon: Icon(Icons.location_on_outlined),
               border: OutlineInputBorder(),
             ),
@@ -850,15 +984,15 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           const SizedBox(height: 12),
           DropdownButtonFormField<int>(
             initialValue: _durationDays,
-            decoration: const InputDecoration(
-              labelText: 'Durasi perjalanan',
+            decoration: InputDecoration(
+              labelText: strings.tripDuration,
               border: OutlineInputBorder(),
             ),
             items: List.generate(
               30,
               (index) => DropdownMenuItem(
                 value: index + 1,
-                child: Text('${index + 1} hari'),
+                child: Text('${index + 1} ${strings.day.toLowerCase()}'),
               ),
             ),
             onChanged: (value) => setState(() => _durationDays = value),
@@ -867,8 +1001,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           TextField(
             controller: _travelerController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Jumlah orang',
+            decoration: InputDecoration(
+              labelText: strings.travelerCount,
               prefixIcon: Icon(Icons.people_outline_rounded),
               border: OutlineInputBorder(),
             ),
@@ -896,8 +1030,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     )
                   : Text(
                       _hasSavedTripDetails
-                          ? 'Simpan perubahan trip'
-                          : 'Simpan detail trip',
+                          ? strings.saveTripChanges
+                          : strings.saveTripDetails,
                     ),
             ),
           ),
@@ -907,6 +1041,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   }
 
   Widget _buildDaySelector() {
+    final dayLabel = context.read<LocalizationProvider>().strings.day;
     final duration = _trip?.durationDays ?? 0;
     if (duration < 1) return const SizedBox.shrink();
     return SizedBox(
@@ -918,7 +1053,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         itemBuilder: (context, index) {
           final selected = index == _selectedDay;
           return ChoiceChip(
-            label: Text('Hari ${index + 1}'),
+            label: Text('$dayLabel ${index + 1}'),
             selected: selected,
             onSelected: (_) => setState(() => _selectedDay = index),
             selectedColor: AppColors.primaryGreen,
@@ -943,7 +1078,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Belum ada pilihan untuk hari ini',
+            _tr('Belum ada pilihan untuk hari ini', 'No items planned for this day'),
             style: GoogleFonts.plusJakartaSans(color: AppColors.textSecondary),
           ),
         ],
@@ -1012,10 +1147,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     final total = (item['totalCost'] as num).toDouble();
     final category = item['category'] as String;
     final countLabel = switch (category) {
-      'Hotel' => '$quantity kamar (maks. 2 orang/kamar)',
-      'Transportasi sewa harian' => '$quantity hari',
-      'Transportasi' => '$quantity orang',
-      _ => '$quantity orang',
+      'Hotel' => _tr(
+        '$quantity kamar (maks. 2 orang/kamar)',
+        '$quantity rooms (max. 2 people/room)',
+      ),
+      'Transportasi sewa harian' => _tr('$quantity hari', '$quantity days'),
+      'Transportasi' => _tr('$quantity orang', '$quantity people'),
+      _ => _tr('$quantity orang', '$quantity people'),
     };
     final icon = switch (category) {
       'Hotel' => Icons.hotel_rounded,
@@ -1058,7 +1196,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     ),
                   ),
                 Text(
-                  '$category · $countLabel · ${currency.convertAndFormat(unitPrice)} per unit',
+                  '${_categoryLabel(category)} · $countLabel · ${currency.convertAndFormat(unitPrice)} per unit',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: AppColors.textMuted,
@@ -1076,7 +1214,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             ),
           ),
           PopupMenuButton<String>(
-            tooltip: 'Aksi itinerary',
+            tooltip: _tr('Aksi itinerary', 'Itinerary actions'),
             onSelected: (action) {
               if (action == 'map') {
                 _openItemInMaps(item);
@@ -1084,13 +1222,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 _deleteItem(item);
               }
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'map',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.map_outlined),
-                  title: Text('Buka di Maps'),
+                  title: Text(_tr('Buka di Maps', 'Open in Maps')),
                 ),
               ),
               PopupMenuItem(
@@ -1101,7 +1239,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     Icons.delete_outline,
                     color: AppColors.errorRed,
                   ),
-                  title: Text('Hapus dari itinerary'),
+                  title: Text(_tr('Hapus dari itinerary', 'Remove from itinerary')),
                 ),
               ),
             ],

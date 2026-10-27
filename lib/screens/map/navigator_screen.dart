@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/models/map_place_model.dart';
 import '../../core/models/location_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/location_provider.dart';
 import '../../core/services/map_places_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -29,6 +30,11 @@ class NavigatorScreen extends StatefulWidget {
 }
 
 class _NavigatorScreenState extends State<NavigatorScreen> {
+  String _tr(String indonesian, String english) => context
+      .read<LocalizationProvider>()
+      .strings
+      .localized(indonesian, english);
+
   // Map Controller
   final MapController _mapController = MapController();
   final ScrollController _scrollController = ScrollController();
@@ -150,7 +156,9 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         final matchName = place.name.toLowerCase().contains(q);
         final matchCity = place.city.toLowerCase().contains(q);
         final matchAddress = place.address.toLowerCase().contains(q);
-        final matchCat = place.category.labelId.toLowerCase().contains(q);
+        final matchCat =
+            place.category.labelId.toLowerCase().contains(q) ||
+            place.category.labelEn.toLowerCase().contains(q);
         final matchTags = place.tags.any((t) => t.toLowerCase().contains(q));
         if (!matchName &&
             !matchCity &&
@@ -224,8 +232,13 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
     );
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tidak dapat membuka Google Maps di perangkat ini.'),
+        SnackBar(
+          content: Text(
+            _tr(
+              'Tidak dapat membuka Google Maps di perangkat ini.',
+              'Google Maps could not be opened on this device.',
+            ),
+          ),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -238,6 +251,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     final selectedLocation = context
         .watch<LocationProvider?>()
         ?.currentLocation;
@@ -261,7 +275,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      tooltip: 'Kembali',
+                      tooltip: _tr('Kembali', 'Back'),
                       onPressed: () {
                         final onBack = widget.onBack;
                         if (onBack != null) {
@@ -290,7 +304,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Menjelajahi ${_mapAreaName(selectedLocation)}',
+                            _tr(
+                              'Menjelajahi ${_mapAreaName(selectedLocation)}',
+                              'Exploring ${_mapAreaName(selectedLocation)}',
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.plusJakartaSans(
@@ -303,7 +320,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Kompas dan arah kiblat',
+                      tooltip: _tr(
+                        'Kompas dan arah kiblat',
+                        'Compass and Qibla direction',
+                      ),
                       onPressed: _openQiblaCompass,
                       icon: const Icon(
                         Icons.explore_rounded,
@@ -333,7 +353,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                       color: AppColors.textDark,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Cari tempat, wisata, atau kuliner',
+                      hintText: strings.searchPlaces,
                       hintStyle: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textMuted,
@@ -345,7 +365,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                       suffixIcon: _searchQuery.isEmpty
                           ? null
                           : IconButton(
-                              tooltip: 'Hapus pencarian',
+                              tooltip: _tr('Hapus pencarian', 'Clear search'),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchQuery = '');
@@ -416,9 +436,12 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                     Expanded(
                       child: Text(
                         _isSearching
-                            ? 'Hasil pencarian'
+                            ? _tr('Hasil pencarian', 'Search results')
                             : _selectedCategory == PlaceCategory.all
-                            ? 'Tempat di sekitar ${_mapAreaName(selectedLocation)}'
+                            ? _tr(
+                                'Tempat di sekitar ${_mapAreaName(selectedLocation)}',
+                                'Places near ${_mapAreaName(selectedLocation)}',
+                              )
                             : _getSectionTitle(),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 17,
@@ -428,14 +451,14 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                       ),
                     ),
                     Text(
-                      '${filtered.length} lokasi',
+                      '${filtered.length} ${_tr("lokasi", "places")}',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textSecondary,
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Muat ulang tempat',
+                      tooltip: _tr('Muat ulang tempat', 'Refresh places'),
                       onPressed: _loadPlaces,
                       icon: const Icon(
                         Icons.refresh_rounded,
@@ -462,7 +485,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                   child: Text(
-                    'Tidak ada tempat ditemukan. Coba kategori atau kata kunci lain.',
+                    _tr(
+                      'Tidak ada tempat ditemukan. Coba kategori atau kata kunci lain.',
+                      'No places found. Try another category or search term.',
+                    ),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -591,7 +617,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
           // Tombol Zoom In
           _floatingMiniButton(
             icon: Icons.add_rounded,
-            tooltip: 'Perbesar Peta',
+            tooltip: _tr('Perbesar Peta', 'Zoom in'),
             onTap: _zoomIn,
           ),
           const SizedBox(height: 8),
@@ -599,7 +625,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
           // Tombol Zoom Out
           _floatingMiniButton(
             icon: Icons.remove_rounded,
-            tooltip: 'Perkecil Peta',
+            tooltip: _tr('Perkecil Peta', 'Zoom out'),
             onTap: _zoomOut,
           ),
           const SizedBox(height: 12),
@@ -770,7 +796,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            place.category.labelId,
+                            context.watch<LocalizationProvider>().langCode ==
+                                    'en'
+                                ? place.category.labelEn
+                                : place.category.labelId,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 9,
                               fontWeight: FontWeight.w700,
@@ -884,7 +913,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         Text(
                           place.price != null && place.price! > 0
                               ? currency.convertAndFormat(place.price!)
-                              : (place.priceDisplay ?? 'Gratis'),
+                              : (place.priceDisplay ?? _tr('Gratis', 'Free')),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
@@ -910,7 +939,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                     color: Colors.white,
                   ),
                   label: Text(
-                    'Buka di Google Maps',
+                    _tr('Buka di Google Maps', 'Open in Google Maps'),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -935,14 +964,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
   /// Filter kategori horizontal untuk tempat yang tampil di peta dan daftar.
   Widget _buildCircularCategoryRow() {
-    final categories = [
-      (PlaceCategory.all, 'Semua'),
-      (PlaceCategory.amusement, 'Hiburan'),
-      (PlaceCategory.hotel, 'Hotel'),
-      (PlaceCategory.park, 'Taman'),
-      (PlaceCategory.restaurants, 'Kuliner'),
-      (PlaceCategory.pool, 'Kolam'),
-    ];
+    final categories = PlaceCategory.values;
 
     return SizedBox(
       height: 48,
@@ -952,9 +974,11 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         itemCount: categories.length,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          final item = categories[index];
-          final category = item.$1;
-          final label = item.$2;
+          final category = categories[index];
+          final strings = context.watch<LocalizationProvider>().strings;
+          final label = strings.langCode == 'en'
+              ? category.labelEn
+              : category.labelId;
           final isSelected = _selectedCategory == category;
 
           return GestureDetector(
@@ -1012,17 +1036,17 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   String _getSectionTitle() {
     switch (_selectedCategory) {
       case PlaceCategory.restaurants:
-        return 'Restoran di Sekitar Anda';
+        return _tr('Restoran di Sekitar Anda', 'Nearby Restaurants');
       case PlaceCategory.hotel:
-        return 'Hotel & Penginapan Sekitar';
+        return _tr('Hotel & Penginapan Sekitar', 'Nearby Hotels & Lodging');
       case PlaceCategory.amusement:
-        return 'Wahana Hiburan Terdekat';
+        return _tr('Wahana Hiburan Terdekat', 'Nearby Attractions');
       case PlaceCategory.park:
-        return 'Taman & Wisata Alam';
+        return _tr('Taman & Wisata Alam', 'Parks & Nature');
       case PlaceCategory.pool:
-        return 'Kolam Renang & Waterpark';
+        return _tr('Kolam Renang & Waterpark', 'Pools & Waterparks');
       case PlaceCategory.all:
-        return 'Destinasi Sekitar Lokasi';
+        return _tr('Destinasi Sekitar Lokasi', 'Places Near You');
     }
   }
 
@@ -1085,7 +1109,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '$formattedDist · ${place.category.labelId}',
+                          '$formattedDist · ${context.watch<LocalizationProvider>().langCode == 'en' ? place.category.labelEn : place.category.labelId}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.plusJakartaSans(
@@ -1097,7 +1121,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Buka ${place.name} di Google Maps',
+                    tooltip: _tr(
+                      'Buka ${place.name} di Google Maps',
+                      'Open ${place.name} in Google Maps',
+                    ),
                     onPressed: () => _openPlaceInGoogleMaps(place),
                     icon: const Icon(
                       Icons.chevron_right_rounded,

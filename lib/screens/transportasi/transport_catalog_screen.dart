@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/database/db_helper.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../itinerary/itinerary_screen.dart';
 
@@ -46,7 +48,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
     super.initState();
     _searchController.text = widget.initialDestination ?? '';
     _future = _load();
-  }
+  } 
 
   @override
   void dispose() {
@@ -79,8 +81,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
     final hasil = _all.where((t) {
       if (_selectedType != 'Semua' && t.type != _selectedType) return false;
       final searchableText =
-          '${t.name} ${t.route} ${t.province} ${t.operatorName}'
-              .toLowerCase();
+          '${t.name} ${t.route} ${t.province} ${t.operatorName}'.toLowerCase();
       if (!queryTerms.every(searchableText.contains)) {
         return false;
       }
@@ -156,8 +157,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
         SnackBar(
           backgroundColor: AppColors.primaryGreen,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           content: Row(
             children: [
               const Icon(Icons.check_circle_rounded, color: Colors.white),
@@ -194,8 +196,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -238,7 +241,10 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
               Text(
                 t.description,
                 style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13, height: 1.5, color: AppColors.textDark),
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppColors.textDark,
+                ),
               ),
               const SizedBox(height: 18),
               Container(
@@ -253,10 +259,13 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Estimasi harga',
-                            style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                color: AppColors.textSecondary)),
+                        Text(
+                          'Estimasi harga',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                         Text(
                           '${context.watch<CurrencyProvider>().convertAndFormat(t.price)} ${t.priceUnit}',
                           style: GoogleFonts.plusJakartaSans(
@@ -276,14 +285,19 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                         backgroundColor: AppColors.primaryGreen,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 22, vertical: 12),
+                          horizontal: 22,
+                          vertical: 12,
+                        ),
                       ),
                       child: Text(
                         'Pilih',
                         style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white, fontWeight: FontWeight.bold),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -322,6 +336,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -329,7 +344,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Transportasi Nusantara',
+              strings.transportCatalogTitle,
               style: GoogleFonts.playfairDisplay(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.bold,
@@ -337,7 +352,7 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
               ),
             ),
             Text(
-              'Pesawat, kereta, bus, kapal, dan sewa kendaraan',
+              strings.transportCatalogSubtitle,
               style: GoogleFonts.plusJakartaSans(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -360,10 +375,11 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'default', child: Text('Berdasarkan jenis')),
+              PopupMenuItem(value: 'price_asc', child: Text('Harga: Termurah')),
               PopupMenuItem(
-                  value: 'price_asc', child: Text('Harga: Termurah')),
-              PopupMenuItem(
-                  value: 'price_desc', child: Text('Harga: Termahal')),
+                value: 'price_desc',
+                child: Text('Harga: Termahal'),
+              ),
               PopupMenuItem(value: 'name_asc', child: Text('Nama (A - Z)')),
             ],
           ),
@@ -388,15 +404,19 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                       'Gagal memuat data transportasi:\n${snapshot.error}',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
-                          color: AppColors.errorRed),
+                        color: AppColors.errorRed,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: _refresh,
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryGreen),
-                      child: const Text('Coba Lagi',
-                          style: TextStyle(color: Colors.white)),
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                      child: const Text(
+                        'Coba Lagi',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ],
                 ),
@@ -421,11 +441,15 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                     onChanged: (_) => _terapkan(),
                     style: GoogleFonts.plusJakartaSans(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Cari nama, rute, operator, atau provinsi...',
+                      hintText: strings.searchTransport,
                       hintStyle: GoogleFonts.plusJakartaSans(
-                          color: AppColors.textMuted, fontSize: 13),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          color: AppColors.primaryGreen),
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: AppColors.primaryGreen,
+                      ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear_rounded, size: 18),
@@ -437,7 +461,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                           : null,
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -466,8 +492,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                         showCheckmark: false,
                         labelStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
-                          fontWeight:
-                              dipilih ? FontWeight.bold : FontWeight.w500,
+                          fontWeight: dipilih
+                              ? FontWeight.bold
+                              : FontWeight.w500,
                           color: dipilih ? Colors.white : AppColors.textDark,
                         ),
                         shape: RoundedRectangleBorder(
@@ -503,7 +530,8 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                         child: Text(
                           'Transportasi tidak ditemukan.',
                           style: GoogleFonts.plusJakartaSans(
-                              color: AppColors.textSecondary),
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       )
                     : RefreshIndicator(
@@ -548,8 +576,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
               Stack(
                 children: [
                   ClipRRect(
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(18)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
                     child: _gambar(t, 150),
                   ),
                   Positioned(
@@ -557,7 +586,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                     left: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primaryGreen.withValues(alpha: 0.88),
                         borderRadius: BorderRadius.circular(20),
@@ -584,7 +615,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                     right: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(20),
@@ -627,7 +660,9 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                             Text(
                               'Estimasi harga',
                               style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10, color: AppColors.textMuted),
+                                fontSize: 10,
+                                color: AppColors.textMuted,
+                              ),
                             ),
                             Text(
                               '${context.watch<CurrencyProvider>().convertAndFormat(t.price)} ${t.priceUnit}',
@@ -645,11 +680,15 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                               onPressed: () => _detail(t),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(
-                                    color: AppColors.borderLight),
+                                  color: AppColors.borderLight,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                               ),
                               child: Text(
                                 'Detail',
@@ -667,9 +706,12 @@ class _TransportCatalogScreenState extends State<TransportCatalogScreen> {
                                 backgroundColor: AppColors.primaryGreen,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                               ),
                               child: Text(
                                 'Pilih',

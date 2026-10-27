@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/services/currency_provider.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/app_strings.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/location_provider.dart';
 import '../../core/services/timezone_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -87,6 +89,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocalizationProvider>();
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: _buildAppBar(),
@@ -98,6 +101,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   /// App bar for the Finance & Time screen.
   PreferredSizeWidget _buildAppBar() {
+    final strings = context.watch<LocalizationProvider>().strings;
     return AppBar(
       backgroundColor: AppColors.warmCream,
       elevation: 0,
@@ -111,7 +115,9 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
       ),
       centerTitle: true,
       title: Text(
-        widget.page == FinanceHubPage.currency ? 'Currency' : 'Time',
+        widget.page == FinanceHubPage.currency
+            ? strings.currency
+            : strings.timezone,
         style: GoogleFonts.plusJakartaSans(
           fontSize: 16,
           fontWeight: FontWeight.w700,
@@ -153,6 +159,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   /// Banner status kurs (online/offline/loading)
   Widget _buildRatesStatusBanner(CurrencyProvider provider) {
+    final strings = context.read<LocalizationProvider>().strings;
     if (provider.isLoading) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -174,7 +181,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
             ),
             const SizedBox(width: 10),
             Text(
-              'Updating exchange rates...',
+              strings.ratesLoading,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 color: AppColors.primaryGreen,
@@ -218,6 +225,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   /// Konverter mata uang dengan pasangan sumber dan tujuan yang dapat ditukar.
   Widget _buildQuickConverter(CurrencyProvider provider) {
+    final strings = context.read<LocalizationProvider>().strings;
     final inputVal =
         double.tryParse(_convertController.text.trim().replaceAll(',', '.')) ??
         0.0;
@@ -253,7 +261,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Quick converter',
+            strings.quickConverter,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -279,9 +287,9 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
                 fontWeight: FontWeight.w700,
                 color: AppColors.textDark,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Enter amount',
+                hintText: strings.amountHint,
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -315,7 +323,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
                   color: AppColors.primaryGreen,
                   size: 24,
                 ),
-                tooltip: 'Swap currencies',
+                tooltip: strings.swapCurrencies,
               ),
             ),
           ),
@@ -407,6 +415,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   /// Shows IDR equivalents for each supported foreign currency.
   Widget _buildAllRatesGrid(CurrencyProvider provider) {
+    final strings = context.read<LocalizationProvider>().strings;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -418,7 +427,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Rates from IDR',
+            strings.ratesFromIDR,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -468,6 +477,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
   // ============================================================
 
   Widget _buildTimeZoneTab() {
+    final strings = context.read<LocalizationProvider>().strings;
     return Consumer<LocationProvider>(
       builder: (context, locProvider, _) {
         final activeLoc = locProvider.currentLocation;
@@ -489,7 +499,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
               // Grid zona waktu referensi (WIB, Tokyo, London, Paris)
               Text(
-                'Reference time zones',
+                strings.referenceTimezones,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -651,6 +661,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
   /// [activeCode] kode zona aktif (dari lokasi yang dipilih pengguna),
   /// digunakan untuk menambahkan highlight/badge "AKTIF" pada kartu terkait.
   Widget _buildTimeZoneCard(TimeZoneInfo tz, String activeCode) {
+    final strings = context.read<LocalizationProvider>().strings;
     final isActive = tz.code == activeCode;
     final isLondon = tz.flag == '🇬🇧';
 
@@ -710,7 +721,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    'AKTIF',
+                    strings.activeZone,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 7,
                       fontWeight: FontWeight.w800,
@@ -775,6 +786,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
 
   /// Info konversi waktu antar zona
   Widget _buildTimeConversionInfo() {
+    final strings = context.read<LocalizationProvider>().strings;
     if (_timeZones.length < 4) return const SizedBox.shrink();
 
     final wib = _timeZones[0];
@@ -801,7 +813,7 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Time difference (from WIB)',
+                strings.timeDifference,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -811,12 +823,14 @@ class _FinanceHubScreenState extends State<FinanceHubScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildDiffRow(wib, wita, '+1 jam dari WIB'),
-          _buildDiffRow(wib, wit, '+2 jam dari WIB'),
+          _buildDiffRow(wib, wita, strings.hoursFromWib.fill({'hours': '+1'})),
+          _buildDiffRow(wib, wit, strings.hoursFromWib.fill({'hours': '+2'})),
           _buildDiffRow(
             wib,
             london,
-            '${london.offsetHours - wib.offsetHours} jam dari WIB',
+            strings.hoursFromWib.fill({
+              'hours': '${london.offsetHours - wib.offsetHours}',
+            }),
           ),
         ],
       ),

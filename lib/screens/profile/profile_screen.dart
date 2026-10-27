@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/game_notification_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/preferences_service.dart';
 import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -119,6 +121,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _showLanguagePicker() async {
+    final localization = context.read<LocalizationProvider>();
+    final strings = localization.strings;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                strings.selectLanguage,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _languageOption(
+                context: sheetContext,
+                localization: localization,
+                languageCode: 'id',
+                label: strings.indonesianLanguage,
+              ),
+              _languageOption(
+                context: sheetContext,
+                localization: localization,
+                languageCode: 'en',
+                label: strings.englishLanguage,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _languageOption({
+    required BuildContext context,
+    required LocalizationProvider localization,
+    required String languageCode,
+    required String label,
+  }) {
+    final isSelected = localization.langCode == languageCode;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      trailing: isSelected
+          ? const Icon(Icons.check_circle, color: AppColors.primaryGreen)
+          : null,
+      onTap: () async {
+        Navigator.of(context).pop();
+        try {
+          await localization.setLanguage(languageCode);
+        } catch (error, stackTrace) {
+          debugPrint('[Profile] Gagal menyimpan bahasa aplikasi: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          _showMessage('Bahasa tidak dapat disimpan. Silakan coba lagi.');
+        }
+      },
+    );
+  }
+
   Future<void> _submitFeedback() async {
     final user = _currentUser;
     final comment = _feedbackController.text.trim();
@@ -165,6 +234,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocalizationProvider>().strings;
     final displayName = _currentUser?.fullName.isNotEmpty == true
         ? _currentUser!.fullName
         : 'Amalia Nur Azizah';
@@ -290,7 +360,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '✦ LocalLuxe Member',
+                              '✦ ${s.localMember}',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -314,12 +384,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _statsLoadFailed
                         ? '—'
                         : _completedTrips?.toString() ?? '...',
-                    'Trips completed',
+                    s.tripsCompleted,
                   ),
                   const SizedBox(width: 10),
                   _buildStatCard(
                     availableVouchers.length.toString(),
-                    'Active vouchers',
+                    s.activeVouchers,
                   ),
                 ],
               ),
@@ -328,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // Menu Settings Section
               Text(
-                'Account & preferences',
+                s.accountPreferences,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -347,15 +417,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     _buildMenuItem(
                       icon: Icons.person_outline_rounded,
-                      title: 'Edit personal profile',
-                      subtitle: 'Add or change your profile photo',
+                      title: s.editProfile,
+                      subtitle: s.profilePhotoSubtitle,
                       onTap: _chooseProfilePhoto,
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
                     _buildMenuItem(
                       icon: Icons.security_rounded,
-                      title: 'Security & biometrics',
-                      subtitle: 'PIN, fingerprint and Face ID',
+                      title: s.securityBiometrics,
+                      subtitle: s.securitySubtitle,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -365,9 +435,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const Divider(color: AppColors.borderLight, height: 1),
                     _buildMenuItem(
+                      icon: Icons.translate_rounded,
+                      title: s.changeLanguage,
+                      subtitle: s.languageSetting,
+                      onTap: _showLanguagePicker,
+                    ),
+                    const Divider(color: AppColors.borderLight, height: 1),
+                    _buildMenuItem(
                       icon: Icons.forum_outlined,
-                      title: 'Kritik & saran',
-                      subtitle: 'Mata kuliah Pemrograman Aplikasi Mobile',
+                      title: s.feedback,
+                      subtitle: s.feedbackSubtitle,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -384,7 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Kritik dan saran',
+                  s.feedbackTitle,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -413,7 +490,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Bagikan kritik atau saran untuk mata kuliah ini.',
+                      s.feedbackDescription,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -429,7 +506,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppColors.textDark,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Tulis kritik dan saran di sini...',
+                        hintText: s.feedbackHint,
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           color: AppColors.textMuted,
@@ -483,7 +560,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               )
                             : Text(
-                                'Kirim masukan',
+                                s.submitFeedback,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -513,7 +590,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                       child: Text(
-                        'Keluar Akun',
+                        s.logout,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

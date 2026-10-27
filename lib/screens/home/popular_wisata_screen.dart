@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
+import '../../core/services/app_strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../itinerary/itinerary_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
@@ -24,12 +26,13 @@ class _PopularWisataScreenState extends State<PopularWisataScreen> {
   @override
   Widget build(BuildContext context) {
     final currencyProvider = context.watch<CurrencyProvider>();
+    final strings = context.watch<LocalizationProvider>().strings;
 
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         title: Text(
-          'Wisata Populer',
+          strings.popularIn,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -47,7 +50,7 @@ class _PopularWisataScreenState extends State<PopularWisataScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Gagal memuat data wisata:\n${snapshot.error}',
+                  '${strings.localized('Gagal memuat data wisata:', 'Could not load attractions:')}\n${snapshot.error}',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(color: AppColors.errorRed),
                 ),
@@ -60,7 +63,9 @@ class _PopularWisataScreenState extends State<PopularWisataScreen> {
 
           final grouped = _groupByRegion(snapshot.data!);
           if (grouped.isEmpty) {
-            return const Center(child: Text('Belum ada data wisata.'));
+            return Center(
+              child: Text(strings.localized('Belum ada data wisata.', 'No attractions available.')),
+            );
           }
 
           return ListView(
@@ -86,6 +91,7 @@ class _PopularWisataScreenState extends State<PopularWisataScreen> {
                       price: _formatPrice(
                         wisata['harga_tiket'],
                         currencyProvider,
+                        strings,
                       ),
                       onTap: () => _openWisata(context, wisata),
                     ),
@@ -113,10 +119,14 @@ class _PopularWisataScreenState extends State<PopularWisataScreen> {
     return grouped;
   }
 
-  String _formatPrice(dynamic value, CurrencyProvider currencyProvider) {
+  String _formatPrice(
+    dynamic value,
+    CurrencyProvider currencyProvider,
+    AppStrings strings,
+  ) {
     final price = (value as num?)?.toDouble();
     if (price == null) return '';
-    if (price == 0) return 'Gratis';
+    if (price == 0) return strings.localized('Gratis', 'Free');
     return currencyProvider.convertAndFormat(price);
   }
 
@@ -155,6 +165,7 @@ class _PopularWisataCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     final imageUrl = (wisata['image_url'] ?? '').toString().trim();
     final city = (wisata['kota_kabupaten'] ?? '').toString().trim();
     final province = (wisata['provinsi'] ?? '').toString().trim();
@@ -182,7 +193,7 @@ class _PopularWisataCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'POPULER DI ${province.isEmpty ? 'INDONESIA' : province.toUpperCase()}',
+                      '${strings.popularIn.toUpperCase()} ${strings.localized('DI', 'IN')} ${province.isEmpty ? strings.indonesia : province.toUpperCase()}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(

@@ -142,7 +142,11 @@ class ConciergeAiService {
     required DateTime startDate,
     required int durationDays,
     required int travelerCount,
+    required String languageCode,
   }) async {
+    final languageInstruction = languageCode == 'en'
+        ? 'Use English.'
+        : 'Gunakan bahasa Indonesia.';
     final date =
         '${startDate.day.toString().padLeft(2, '0')}/'
         '${startDate.month.toString().padLeft(2, '0')}/${startDate.year}';
@@ -157,7 +161,7 @@ class ConciergeAiService {
               'Jawab hanya JSON valid tanpa markdown dengan bentuk tepat: '
               '{"days":[{"title":"Tema hari","activities":["Aktivitas 1",'
               '"Aktivitas 2","Aktivitas 3"]}]}. Harus ada tepat $durationDays '
-              'hari dan 3 aktivitas singkat per hari. Gunakan bahasa Indonesia. '
+              'hari dan 3 aktivitas singkat per hari. $languageInstruction '
               'Jangan menambahkan harga, booking, atau klaim ketersediaan.',
         },
       ],

@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/models/supabase_voucher.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -59,6 +61,7 @@ class _VoucherScreenState extends State<VoucherScreen> {
   }
 
   Future<void> _useVoucher(SupabaseVoucher voucher) async {
+    final strings = context.read<LocalizationProvider>().strings;
     if (_updatingVoucherIds.contains(voucher.id)) return;
     setState(() => _updatingVoucherIds.add(voucher.id));
     try {
@@ -83,7 +86,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Kode ${voucher.code} berhasil disalin & digunakan!',
+            strings.localized(
+              'Kode ${voucher.code} berhasil disalin & digunakan!',
+              'Code ${voucher.code} copied and redeemed!',
+            ),
             style: GoogleFonts.plusJakartaSans(color: Colors.white),
           ),
           backgroundColor: AppColors.primaryGreen,
@@ -117,6 +123,7 @@ class _VoucherScreenState extends State<VoucherScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -132,7 +139,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
         ),
         centerTitle: true,
         title: Text(
-          'Voucher & Blockchain Reward',
+          strings.localized(
+            'Voucher & Hadiah Blockchain',
+            'Vouchers & Blockchain Rewards',
+          ),
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -172,7 +182,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Voucher Digital Anda',
+                          strings.localized(
+                            'Voucher Digital Anda',
+                            'Your Digital Vouchers',
+                          ),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -181,7 +194,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Voucher hadiah tersimpan di akun Supabase Anda dan siap digunakan.',
+                          strings.localized(
+                            'Voucher hadiah tersimpan di akun Supabase Anda dan siap digunakan.',
+                            'Reward vouchers are saved to your Supabase account and ready to use.',
+                          ),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 11,
                             color: Colors.white.withValues(alpha: 0.8),
@@ -198,7 +214,7 @@ class _VoucherScreenState extends State<VoucherScreen> {
             const SizedBox(height: 20),
 
             Text(
-              'Voucher Aktif Anda',
+              strings.localized('Voucher Aktif Anda', 'Your Active Vouchers'),
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -220,7 +236,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Center(
                   child: Text(
-                    'Belum ada voucher aktif.',
+                    strings.localized(
+                      'Belum ada voucher aktif.',
+                      'No active vouchers yet.',
+                    ),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -256,7 +275,7 @@ class _VoucherScreenState extends State<VoucherScreen> {
           const SizedBox(height: 8),
           TextButton(
             onPressed: _loadVouchers,
-            child: const Text('Coba lagi'),
+            child: Text(context.watch<LocalizationProvider>().strings.retry),
           ),
         ],
       ),
@@ -325,7 +344,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Hadiah Mini Game LokaCatch',
+                        context.watch<LocalizationProvider>().strings.localized(
+                          'Hadiah Mini Game LokaCatch',
+                          'LokaCatch Mini Game Reward',
+                        ),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           color: AppColors.textSecondary,
@@ -367,7 +389,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Kode voucher',
+                        context.watch<LocalizationProvider>().strings.localized(
+                          'Kode voucher',
+                          'Voucher code',
+                        ),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
@@ -411,7 +436,10 @@ class _VoucherScreenState extends State<VoucherScreen> {
                           ),
                         )
                       : Text(
-                          'Gunakan',
+                          context
+                              .watch<LocalizationProvider>()
+                              .strings
+                              .localized('Gunakan', 'Redeem'),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
-import '../../core/database/db_helper.dart';
-import '../../core/models/trip_model.dart';
+import '../../core/services/app_strings.dart';
 import '../../core/services/game_notification_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 
 class NotificationInboxScreen extends StatefulWidget {
@@ -16,7 +17,6 @@ class NotificationInboxScreen extends StatefulWidget {
 
 class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
   bool _isLoading = true;
-  TripModel? _trip;
   List<Map<String, dynamic>> _gameNotifications = [];
 
   @override
@@ -27,15 +27,10 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
 
   Future<void> _loadNotifications() async {
     try {
-      final results = await Future.wait<Object?>([
-        DBHelper.getActiveTrip(),
-        GameNotificationService.getHistory(),
-      ]);
+      final notifications = await GameNotificationService.getHistory();
       if (!mounted) return;
       setState(() {
-        _trip = results[0] as TripModel?;
-        _gameNotifications =
-            results[1] as List<Map<String, dynamic>>;
+        _gameNotifications = notifications;
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -46,7 +41,14 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notifikasi gagal dimuat. Coba lagi.')),
+        SnackBar(
+          content: Text(
+            context.read<LocalizationProvider>().strings.localized(
+              'Notifikasi gagal dimuat. Coba lagi.',
+              'Could not load notifications. Please try again.',
+            ),
+          ),
+        ),
       );
     }
   }
@@ -62,35 +64,13 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
         icon: Icons.card_giftcard_rounded,
       );
     }).toList();
-    final trip = _trip;
-    final startDate = DateTime.tryParse(trip?.dates ?? '');
-    if (trip != null && startDate != null && trip.destination.isNotEmpty) {
-      for (final daysBefore in const [7, 5, 3, 0]) {
-        final reminderDate = DateTime(
-          startDate.year,
-          startDate.month,
-          startDate.day - daysBefore,
-          9,
-        );
-        if (!reminderDate.isAfter(DateTime.now())) continue;
-        notifications.add(
-          _InboxNotification(
-            title: 'Persiapkan perjalananmu ke ${trip.destination}!',
-            body: daysBefore == 0
-                ? 'Hari ini waktunya berangkat. Cek kembali itinerary-mu, ya!'
-                : 'Perjalananmu tinggal $daysBefore hari lagi. Yuk, cek itinerary dan persiapanmu.',
-            date: reminderDate,
-            icon: Icons.luggage_outlined,
-          ),
-        );
-      }
-    }
     notifications.sort((a, b) => a.date.compareTo(b.date));
     return notifications;
   }
 
-  String _dateLabel(DateTime date) {
-    const months = [
+  String _dateLabel(DateTime date, AppStrings strings) {
+    final months = strings.langCode == 'id'
+        ? const [
       'Jan',
       'Feb',
       'Mar',
@@ -103,14 +83,28 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
       'Okt',
       'Nov',
       'Des',
-    ];
+          ]
+        : const [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final notificationDay = DateTime(date.year, date.month, date.day);
     final daysUntil = notificationDay.difference(today).inDays;
     final dayLabel = switch (daysUntil) {
-      0 => 'Hari ini',
-      1 => 'Besok',
+      0 => strings.localized('Hari ini', 'Today'),
+      1 => strings.localized('Besok', 'Tomorrow'),
       _ => '${date.day} ${months[date.month - 1]}',
     };
     final time =
@@ -121,11 +115,12 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         title: Text(
-          'Notifikasi',
+          strings.localized('Notifikasi', 'Notifications'),
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -151,7 +146,10 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Belum ada notifikasi',
+                          strings.localized(
+                            'Belum ada notifikasi',
+                            'No notifications yet',
+                          ),
                           textAlign: TextAlign.center,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 14,
@@ -161,7 +159,10 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Pengingat perjalanan yang akan datang akan muncul di sini.',
+                          strings.localized(
+                            'Notifikasi dan hadiah voucher akan muncul di sini.',
+                            'Notifications and voucher rewards will appear here.',
+                          ),
                           textAlign: TextAlign.center,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
@@ -175,14 +176,19 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
                       padding: const EdgeInsets.all(16),
                       itemCount: _notifications.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) =>
-                          _buildNotificationCard(_notifications[index]),
+                      itemBuilder: (context, index) => _buildNotificationCard(
+                        _notifications[index],
+                        strings,
+                      ),
                     ),
             ),
     );
   }
 
-  Widget _buildNotificationCard(_InboxNotification notification) {
+  Widget _buildNotificationCard(
+    _InboxNotification notification,
+    AppStrings strings,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
@@ -222,7 +228,7 @@ class _NotificationInboxScreenState extends State<NotificationInboxScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _dateLabel(notification.date),
+                      _dateLabel(notification.date, strings),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,
                         color: AppColors.textMuted,

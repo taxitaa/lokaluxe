@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/services/auth_service.dart';
 import 'login_screen.dart';
@@ -32,11 +34,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
 
   Future<void> _handleRegister() async {
+    final strings = context.read<LocalizationProvider>().strings;
     if (!_agreedToTerms) {
       setState(() => _showTermsError = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please accept the Terms of Service to continue.'),
+        SnackBar(
+          content: Text(strings.acceptTermsError),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -108,6 +111,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.pureWhite,
       appBar: AppBar(
@@ -202,7 +206,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Mulai petualanganmu bersama kami',
+                                strings.startAdventure,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -222,7 +226,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Headline & Subtitle
               Text(
-                'Create your account',
+                strings.registerTitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -232,7 +236,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Start planning thoughtful trips with us.',
+                strings.registerSubtitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
@@ -254,7 +258,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
-                  labelText: 'Masukkan nama lengkap Anda',
+                  labelText: strings.nameHint,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -305,7 +309,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
-                  labelText: 'Masukkan email Anda',
+                  labelText: strings.emailHint,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -367,7 +371,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
-                  labelText: 'Masukkan password Anda',
+                  labelText: strings.passwordHint,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -445,7 +449,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'I agree to the LocalLuxe Terms of Service and Privacy Policy.',
+                      strings.termsText,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -460,7 +464,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Padding(
                   padding: const EdgeInsets.only(left: 32),
                   child: Text(
-                    'Anda harus menyetujui Syarat Layanan dan Kebijakan Privasi.',
+                    strings.acceptTermsError,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11,
                       color: AppColors.errorRed,
@@ -498,7 +502,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Create account',
+                              strings.createAccount,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -523,7 +527,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Already have an account? ',
+                      strings.hasAccount,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -532,7 +536,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
                       child: Text(
-                        'Sign in',
+                        strings.signIn,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

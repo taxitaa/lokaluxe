@@ -1,12 +1,47 @@
 import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'app_strings.dart';
 
-/// Provides the fixed English interface used throughout the app.
-class LocalizationProvider {
-  AppStrings get strings => AppStrings.en;
-  String get langCode => 'en';
-  bool get isEnglish => true;
-  bool get isManualOverride => false;
+class LocalizationProvider extends ChangeNotifier {
+  static const _languagePreferenceKey = 'app_language_code';
+
+  AppStrings _strings = AppStrings.id;
+  bool _isInitialized = false;
+
+  AppStrings get strings => _strings;
+  String get langCode => _strings.langCode;
+  bool get isEnglish => langCode == 'en';
+  bool get isInitialized => _isInitialized;
+
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+    final preferences = await SharedPreferences.getInstance();
+    final savedLanguage = preferences.getString(_languagePreferenceKey);
+    if (savedLanguage == 'en') {
+      _strings = AppStrings.en;
+    } else {
+      _strings = AppStrings.id;
+    }
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  Future<void> setLanguage(String languageCode) async {
+    if (languageCode != 'id' && languageCode != 'en') {
+      throw ArgumentError.value(
+        languageCode,
+        'languageCode',
+        'Unsupported language',
+      );
+    }
+    if (languageCode == langCode) return;
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_languagePreferenceKey, languageCode);
+    _strings = languageCode == 'id' ? AppStrings.id : AppStrings.en;
+    notifyListeners();
+  }
 }
 
 extension LocalizationContext on BuildContext {
@@ -14,11 +49,14 @@ extension LocalizationContext on BuildContext {
     try {
       // ignore: invalid_use_of_protected_member
       return (getElementForInheritedWidgetOfExactType<
-                  _LocalizationInheritedWidget>()
-              ?.widget as _LocalizationInheritedWidget?)
-          ?.strings ?? AppStrings.en;
+                        _LocalizationInheritedWidget
+                      >()
+                      ?.widget
+                  as _LocalizationInheritedWidget?)
+              ?.strings ??
+          AppStrings.id;
     } catch (_) {
-      return AppStrings.en;
+      return AppStrings.id;
     }
   }
 

@@ -5,13 +5,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
 import '../../core/models/voucher_data.dart';
+import '../../core/services/app_strings.dart';
 import '../../core/services/game_notification_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/session_service.dart';
 import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -64,6 +67,8 @@ class LokaCatchScreen extends StatefulWidget {
 
 class _LokaCatchScreenState extends State<LokaCatchScreen>
     with TickerProviderStateMixin {
+  AppStrings get _strings => context.read<LocalizationProvider>().strings;
+
   // ---------------------------------------------------
   // KONSTANTA GAME
   // ---------------------------------------------------
@@ -166,8 +171,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
     final alternatives = previousTitle == null
         ? rewards
         : rewards
-            .where((voucher) => voucher.title != previousTitle)
-            .toList(growable: false);
+              .where((voucher) => voucher.title != previousTitle)
+              .toList(growable: false);
     final choices = alternatives.isEmpty ? rewards : alternatives;
     return choices[_random.nextInt(choices.length)];
   }
@@ -314,9 +319,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
         return;
       }
 
-      await _backgroundMusicPlayer.play(
-        AssetSource('audio/audio.mp3'),
-      );
+      await _backgroundMusicPlayer.play(AssetSource('audio/audio.mp3'));
     } catch (error, stackTrace) {
       debugPrint('[LokaCatch] Gagal memutar backsound: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -477,11 +480,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       debugPrint('[LokaCatch] Gagal memilih hadiah hotel/pesawat: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
-        setState(
-          () => _voucherSaveError =
-              'Data hadiah hotel/pesawat tidak tersedia. '
-              'Muat ulang katalog hotel dan pesawat, lalu coba lagi.',
-        );
+        setState(() => _voucherSaveError = _strings.rewardDataUnavailable);
         await _showWinDialog();
       }
       return;
@@ -511,24 +510,20 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         setState(
-          () => _voucherSaveError =
-              'Voucher belum berhasil disimpan ke Supabase. '
-              'Periksa koneksi dan akun online, lalu hubungi dukungan jika '
-              'masalah berlanjut. ($error)',
+          () => _voucherSaveError = '${_strings.voucherSaveFailure} ($error)',
         );
       }
     }
 
     try {
-      final notificationResult = await GameNotificationService.showVoucherReward(
-        rewardVoucher,
-      );
+      final notificationResult =
+          await GameNotificationService.showVoucherReward(rewardVoucher);
       if (notificationResult == VoucherNotificationResult.unsupported &&
           mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Selamat! Kamu mendapatkan ${rewardVoucher.discount}: '
+              '${_strings.greatJob} ${rewardVoucher.discount}: '
               '${rewardVoucher.title}',
             ),
             behavior: SnackBarBehavior.floating,
@@ -540,8 +535,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notifikasi hadiah gagal ditampilkan.'),
+          SnackBar(
+            content: Text(_strings.notificationFailure),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -551,8 +546,8 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notifikasi hadiah tidak tersedia di perangkat ini.'),
+          SnackBar(
+            content: Text(_strings.notificationUnavailable),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -600,6 +595,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// Menampilkan dialog kemenangan dengan hadiah voucher
   Future<void> _showWinDialog() async {
+    final strings = _strings;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -611,7 +607,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             const Text('🎉', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 8),
             Text(
-              'Luar Biasa!',
+              strings.greatJob,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -625,7 +621,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Kamu berhasil menangkap $_caughtItems item kuliner Nusantara!',
+              strings.caughtSummary.fill({'count': '$_caughtItems'}),
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 color: AppColors.textSecondary,
@@ -645,7 +641,9 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               child: Column(
                 children: [
                   Text(
-                    '🎫 Selamat! Kamu mendapatkan ${_gameRewardVoucher.discount}',
+                    strings.rewardPrefix.fill({
+                      'discount': _gameRewardVoucher.discount,
+                    }),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -674,7 +672,9 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Ref: ${_gameRewardVoucher.reference}',
+                    strings.reference.fill({
+                      'reference': _gameRewardVoucher.reference,
+                    }),
                     style: const TextStyle(
                       fontSize: 9,
                       fontFamily: 'monospace',
@@ -686,7 +686,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   if (_earnedVoucherCode != null) ...[
                     const SizedBox(height: 8),
                     Text(
-                      'Kode voucher: $_earnedVoucherCode',
+                      strings.voucherCode.fill({'code': _earnedVoucherCode!}),
                       style: const TextStyle(
                         fontSize: 13,
                         fontFamily: 'monospace',
@@ -731,7 +731,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: Text(
-                    'Main Lagi',
+                    strings.restart,
                     style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.w700,
                     ),
@@ -744,7 +744,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                 child: TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: Text(
-                    'Kembali ke Menu',
+                    strings.home,
                     style: GoogleFonts.plusJakartaSans(
                       color: AppColors.textSecondary,
                       fontWeight: FontWeight.w600,
@@ -775,6 +775,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocalizationProvider>();
     return Scaffold(
       backgroundColor: const Color(0xFF0F1B14), // Dark game background
       appBar: _buildAppBar(),
@@ -824,6 +825,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// AppBar game
   PreferredSizeWidget _buildAppBar() {
+    final strings = _strings;
     return AppBar(
       backgroundColor: const Color(0xFF17382D),
       surfaceTintColor: Colors.transparent,
@@ -842,7 +844,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       ),
       centerTitle: true,
       title: Text(
-        'LokaCatch',
+        strings.lokaCatch,
         style: GoogleFonts.plusJakartaSans(
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -947,6 +949,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// HUD: menampilkan progress item yang ditangkap
   Widget _buildHUD() {
+    final strings = _strings;
     return Positioned(
       top: 8,
       left: 16,
@@ -1024,7 +1027,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      'VOUCHER',
+                      strings.voucher.toUpperCase(),
                       style: GoogleFonts.plusJakartaSans(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -1064,7 +1067,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   ),
                   const SizedBox(width: 7),
                   Text(
-                    'Miringkan HP untuk menggerakkan komodo',
+                    strings.tiltToMove,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1082,6 +1085,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// Overlay layar awal sebelum game dimulai
   Widget _buildStartOverlay() {
+    final strings = _strings;
     return Container(
       color: Colors.black.withValues(alpha: 0.75),
       child: Center(
@@ -1108,7 +1112,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Tangkap 10 hidangan khas Indonesia!\nHindari 💣 agar tidak Game Over.',
+                strings.gameInstructions,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   color: Colors.white70,
@@ -1129,27 +1133,15 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                 child: Column(
                   children: [
                     if (_gyroscopeAvailable)
-                      _buildHowToRow(
-                        '📱',
-                        'Miringkan HP atau geser layar untuk bergerak',
-                      )
+                      _buildHowToRow('📱', strings.swipeOrButtons)
                     else
-                      _buildHowToRow(
-                        '👆',
-                        'Geser layar atau gunakan tombol ◀ ▶',
-                      ),
+                      _buildHowToRow('👆', strings.swipeOrButtons),
                     const SizedBox(height: 6),
-                    _buildHowToRow(
-                      '🍛',
-                      'Tangkap hidangan Indonesia (+1 item)',
-                    ),
+                    _buildHowToRow('🍛', strings.catchFood),
                     const SizedBox(height: 6),
-                    _buildHowToRow('💣', 'Hindari bom! (Game Over seketika)'),
+                    _buildHowToRow('💣', strings.avoidBomb),
                     const SizedBox(height: 6),
-                    _buildHowToRow(
-                      '🎫',
-                      'Tangkap 10 item untuk mendapatkan voucher!',
-                    ),
+                    _buildHowToRow('🎫', strings.catchTenForVoucher),
                   ],
                 ),
               ),
@@ -1181,7 +1173,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Gyroscope tidak tersedia.\nMode kontrol manual aktif.',
+                        strings.gyroUnavailable,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           color: Colors.orange,
@@ -1209,7 +1201,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
                   shadowColor: AppColors.primaryGreen.withValues(alpha: 0.5),
                 ),
                 child: Text(
-                  'Mulai Bermain!',
+                  strings.startPlaying,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -1225,6 +1217,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// Overlay game over
   Widget _buildGameOverOverlay() {
+    final strings = _strings;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Center(
@@ -1234,7 +1227,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             const Text('💥', style: TextStyle(fontSize: 80)),
             const SizedBox(height: 16),
             Text(
-              'Game Over!',
+              strings.gameOver,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 36,
                 fontWeight: FontWeight.w900,
@@ -1243,7 +1236,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              'Komodomu kena bom 💣\nItem berhasil ditangkap: $_caughtItems',
+              '${strings.gameOverMsg}\n${strings.caughtCount.fill({'count': '$_caughtItems'})}',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 14,
                 color: Colors.white70,
@@ -1256,7 +1249,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               onPressed: _startGame,
               icon: const Icon(Icons.refresh_rounded),
               label: Text(
-                'Coba Lagi',
+                strings.retry,
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
@@ -1278,7 +1271,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'Keluar',
+                strings.close,
                 style: GoogleFonts.plusJakartaSans(
                   color: Colors.white54,
                   fontWeight: FontWeight.w600,
@@ -1293,6 +1286,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
 
   /// Kontrol manual (tombol) untuk perangkat tanpa gyroscope
   Widget _buildManualControls() {
+    final strings = _strings;
     return Positioned(
       bottom: 0,
       left: 0,
@@ -1321,7 +1315,7 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               ),
             ),
             Text(
-              'KONTROL MANUAL',
+              strings.manualControls,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 10,
                 color: Colors.white38,
@@ -1370,41 +1364,4 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
       ],
     );
   }
-}
-
-// ============================================================
-// CUSTOM PAINTER: Latar bintang untuk nuansa game
-// ============================================================
-
-/// Painter untuk menggambar bintang-bintang sebagai background dekoratif
-class _StarfieldPainter extends CustomPainter {
-  // Posisi bintang statis (agar tidak berubah setiap rebuild)
-  static final List<Offset> _stars = _generateStars();
-
-  static List<Offset> _generateStars() {
-    final random = Random(42); // Seed tetap agar konsisten
-    return List.generate(
-      60,
-      (_) => Offset(random.nextDouble(), random.nextDouble()),
-    );
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
-    for (final star in _stars) {
-      canvas.drawCircle(
-        Offset(star.dx * size.width, star.dy * size.height),
-        1.0,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

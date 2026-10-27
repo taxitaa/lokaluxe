@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/services/auth_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
 
@@ -58,11 +60,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         title: Text(
-          'Kritik & saran',
+          strings.feedback,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -82,7 +85,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   Text(
-                    'Masukan untuk mata kuliah Pemrograman Aplikasi Mobile',
+                    strings.localized(
+                      'Masukan untuk aplikasi LokaLuxe',
+                      'Feedback for the LokaLuxe app',
+                    ),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -123,7 +129,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           TextButton.icon(
             onPressed: _loadFeedback,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Coba lagi'),
+            label: Text(context.watch<LocalizationProvider>().strings.retry),
           ),
         ],
       ),
@@ -133,7 +139,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Widget _buildEmptyState() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 28),
     child: Text(
-      'Belum ada kritik dan saran. Jadilah yang pertama berbagi masukan untuk mata kuliah ini.',
+      context.watch<LocalizationProvider>().strings.localized(
+        'Belum ada kritik dan saran. Jadilah yang pertama berbagi masukan untuk aplikasi ini.',
+        'No feedback yet. Be the first to share feedback about the app.',
+      ),
       textAlign: TextAlign.center,
       style: GoogleFonts.plusJakartaSans(
         fontSize: 12,
@@ -172,7 +181,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  'Mahasiswa',
+                  context.watch<LocalizationProvider>().strings.localized(
+                    'Pengguna',
+                    'User',
+                  ),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

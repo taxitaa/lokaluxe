@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/location_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../location/location_picker_modal.dart';
@@ -60,6 +61,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     final size = MediaQuery.of(context).size;
     final double circleSize = (size.width * 0.38).clamp(120.0, 160.0);
 
@@ -160,7 +162,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
               // Main Headline
               Text(
-                'Start Exploring\nthe World',
+                strings.localized(
+                  'Mulai Menjelajahi\nDunia',
+                  'Start Exploring\nthe World',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 30,
@@ -177,7 +182,10 @@ class _SplashScreenState extends State<SplashScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  'Curated Indonesian luxury without tourist\ninflation & transparent budget tracking.',
+                  strings.localized(
+                    'Wisata mewah Indonesia pilihan tanpa harga turis\nserta pengelolaan budget transparan.',
+                    'Curated Indonesian luxury without tourist\ninflation & transparent budget tracking.',
+                  ),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
@@ -215,7 +223,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Start Exploring',
+                        strings.localized('Mulai Jelajah', 'Start Exploring'),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -239,7 +247,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'Belum punya akun? ',
+                    strings.noAccount,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -254,7 +262,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       );
                     },
                     child: Text(
-                      'Daftar Sekarang',
+                      strings.localized('Daftar Sekarang', 'Create an account'),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,

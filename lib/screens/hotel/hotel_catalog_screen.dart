@@ -7,6 +7,7 @@ import '../../core/database/db_helper.dart';
 import '../../core/database/hotel_seed_data.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/map_places_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../itinerary/itinerary_screen.dart';
@@ -667,6 +668,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -674,7 +676,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Katalog Hotel Nusantara',
+              strings.hotelCatalogTitle,
               style: GoogleFonts.playfairDisplay(
                 color: AppColors.textDark,
                 fontWeight: FontWeight.bold,
@@ -682,7 +684,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
               ),
             ),
             Text(
-              '46 Pilihan Hotel Tersebar Se-Indonesia',
+              strings.hotelCatalogSubtitle,
               style: GoogleFonts.plusJakartaSans(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -799,8 +801,7 @@ class _HotelCatalogScreenState extends State<HotelCatalogScreen> {
                         onChanged: (_) => _applyFilterAndSort(),
                         style: GoogleFonts.plusJakartaSans(fontSize: 14),
                         decoration: InputDecoration(
-                          hintText:
-                              'Cari nama hotel, kota, provinsi, atau jalan...',
+                          hintText: strings.searchHotels,
                           hintStyle: GoogleFonts.plusJakartaSans(
                             color: AppColors.textMuted,
                             fontSize: 13,

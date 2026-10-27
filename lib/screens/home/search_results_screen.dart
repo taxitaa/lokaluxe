@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/models/hotel_model.dart';
 import '../../core/models/transport_model.dart';
+import '../../core/services/app_strings.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../itinerary/itinerary_screen.dart';
@@ -72,11 +75,12 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
         title: Text(
-          'Pencarian trip',
+          strings.localized('Pencarian trip', 'Trip search'),
           style: GoogleFonts.plusJakartaSans(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -93,7 +97,9 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Pencarian gagal dimuat:\n${snapshot.error}'),
+                child: Text(
+                  '${strings.localized('Pencarian gagal dimuat:', 'Could not load search results:')}\n${snapshot.error}',
+                ),
               ),
             );
           }
@@ -109,7 +115,10 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           if (total == 0) {
             return Center(
               child: Text(
-                'Tidak ada hasil untuk "${widget.query}".',
+                strings.localized(
+                  'Tidak ada hasil untuk "${widget.query}".',
+                  'No results for "${widget.query}".',
+                ),
                 style: GoogleFonts.plusJakartaSans(
                   color: AppColors.textSecondary,
                 ),
@@ -142,7 +151,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hasil untuk',
+                            strings.localized('Hasil untuk', 'Results for'),
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -150,7 +159,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '"${widget.query}" · $total item',
+                            '"${widget.query}" · $total ${strings.localized('item', 'items')}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.plusJakartaSans(
@@ -168,7 +177,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
               const SizedBox(height: 12),
               _buildSection(
                 context,
-                title: 'Hotel',
+                strings: strings,
+                title: strings.hotels,
                 icon: Icons.hotel_rounded,
                 items: results.hotels
                     .map(
@@ -184,7 +194,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
               ),
               _buildSection(
                 context,
-                title: 'Transportasi',
+                strings: strings,
+                title: strings.transport,
                 icon: Icons.directions_bus_rounded,
                 items: results.transport
                     .map(
@@ -202,7 +213,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
               ),
               _buildSection(
                 context,
-                title: 'Wisata',
+                strings: strings,
+                title: strings.wisata,
                 icon: Icons.attractions_rounded,
                 items: results.attractions
                     .map(
@@ -241,6 +253,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
 
   Widget _buildSection(
     BuildContext context, {
+    required AppStrings strings,
     required String title,
     required IconData icon,
     required List<_ResultItem> items,
@@ -334,7 +347,10 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 12, top: 4),
             child: Text(
-              'Menampilkan 12 dari ${items.length} hasil. Buka kategori untuk melihat lainnya.',
+              strings.localized(
+                'Menampilkan 12 dari ${items.length} hasil. Buka kategori untuk melihat lainnya.',
+                'Showing 12 of ${items.length} results. Open the category to see more.',
+              ),
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 color: AppColors.textSecondary,
@@ -367,15 +383,14 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
     BuildContext context,
     TransportModel transport,
   ) async {
-    final selectedTransport = await Navigator.of(context)
-        .push<TransportModel>(
-          MaterialPageRoute(
-            builder: (_) => TransportCatalogScreen(
-              initialDestination: transport.name,
-              onSelectTransport: (_) {},
-            ),
-          ),
-        );
+    final selectedTransport = await Navigator.of(context).push<TransportModel>(
+      MaterialPageRoute(
+        builder: (_) => TransportCatalogScreen(
+          initialDestination: transport.name,
+          onSelectTransport: (_) {},
+        ),
+      ),
+    );
     if (selectedTransport == null || !context.mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(

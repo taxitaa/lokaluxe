@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/database/database_initializer.dart';
@@ -43,8 +44,8 @@ class LokaLuxeApp extends StatelessWidget {
           create: (_) => CurrencyProvider()..initialize(),
         ),
 
-        Provider<LocalizationProvider>(
-          create: (_) => LocalizationProvider(),
+        ChangeNotifierProvider<LocalizationProvider>(
+          create: (_) => LocalizationProvider()..initialize(),
         ),
 
         ChangeNotifierProxyProvider<CurrencyProvider, LocationProvider>(
@@ -209,10 +210,17 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final localization = context.watch<LocalizationProvider>();
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: 'LokaLuxe',
-      locale: const Locale('en'),
+      locale: Locale(localization.langCode),
+      supportedLocales: const [Locale('id'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

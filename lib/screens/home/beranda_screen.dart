@@ -381,7 +381,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       const SizedBox(width: 6),
                       Text(
                         _activeTrip == null
-                            ? 'Trip budget '
+                            ? s.localized('Budget trip ', 'Trip budget ')
                             : '${s.budgetRemaining} ',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
@@ -391,9 +391,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       ),
                       Text(
                         _budgetLoadFailed
-                            ? 'Unavailable'
+                            ? s.localized('Tidak tersedia', 'Unavailable')
                             : _activeTrip == null
-                            ? 'Atur sekarang'
+                            ? s.localized('Atur sekarang', 'Set now')
                             : _remainingBudget == null
                             ? '...'
                             : currencyProvider.convertAndFormat(
@@ -418,7 +418,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
               if (_activeTrip != null) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Total budget: ${currencyProvider.convertAndFormat(_activeTrip!.targetBudget)}',
+                  '${s.localized("Total anggaran", "Total budget")}: ${currencyProvider.convertAndFormat(_activeTrip!.targetBudget)}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

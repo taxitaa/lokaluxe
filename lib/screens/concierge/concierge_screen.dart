@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/models/trip_model.dart';
 import '../../core/services/concierge_ai_service.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/trip_reminder_service.dart';
 import '../../core/services/trip_request_parser.dart';
 import '../../core/theme/app_colors.dart';
@@ -19,11 +21,6 @@ class ConciergeScreen extends StatefulWidget {
 }
 
 class _ConciergeScreenState extends State<ConciergeScreen> {
-  static const _quickPrompts = [
-    'Bantu buat itinerary 3 hari di Bali',
-    'Bagaimana mengatur budget trip?',
-    'Rekomendasikan wisata di Yogyakarta',
-  ];
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _aiService = ConciergeAiService();
@@ -204,6 +201,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
       startDate: startDate,
       durationDays: durationDays,
       travelerCount: travelerCount,
+      languageCode: context.read<LocalizationProvider>().langCode,
     );
     final trip = TripModel(
       destination: destination,
@@ -279,6 +277,12 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
+    final quickPrompts = [
+      strings.conciergePromptItinerary,
+      strings.conciergePromptBudget,
+      strings.conciergePromptAttractions,
+    ];
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -300,7 +304,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'AI Concierge',
+                    strings.concierge,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(
@@ -310,7 +314,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                     ),
                   ),
                   Text(
-                    'Asisten perjalanan LokaLuxe',
+                    strings.travelAssistant,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(
@@ -367,7 +371,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                 },
               ),
             ),
-            if (_messages.isEmpty) _buildQuickPrompts(),
+            if (_messages.isEmpty) _buildQuickPrompts(quickPrompts),
             _buildComposer(),
           ],
         ),
@@ -375,13 +379,13 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     );
   }
 
-  Widget _buildQuickPrompts() {
+  Widget _buildQuickPrompts(List<String> quickPrompts) {
     return SizedBox(
       height: 48,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _quickPrompts.length,
+        itemCount: quickPrompts.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) => ActionChip(
           avatar: const Icon(
@@ -390,7 +394,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
             color: AppColors.primaryGreen,
           ),
           label: Text(
-            _quickPrompts[index],
+            quickPrompts[index],
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: AppColors.textDark,
@@ -406,13 +410,14 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
           ),
           onPressed: _isSending
               ? null
-              : () => _sendMessage(_quickPrompts[index]),
+              : () => _sendMessage(quickPrompts[index]),
         ),
       ),
     );
   }
 
   Widget _buildComposer() {
+    final strings = context.read<LocalizationProvider>().strings;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: BoxDecoration(
@@ -449,7 +454,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                         color: AppColors.textDark,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Tanya seputar perjalanan...',
+                        hintText: strings.askTravel,
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 14,
                           color: AppColors.textMuted,

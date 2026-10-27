@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import 'package:provider/provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../budget/budget_planner_screen.dart';
 
@@ -21,6 +24,7 @@ class DestinationDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.pureWhite,
       body: Stack(
@@ -119,7 +123,7 @@ class DestinationDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '$rating (428 ulasan terverifikasi)',
+                              '$rating (${strings.localized('428 ulasan terverifikasi', '428 verified reviews')})',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -173,18 +177,24 @@ class DestinationDetailScreen extends StatelessWidget {
                       // Highlight Badges
                       Row(
                         children: [
-                          _buildHighlightBadge('🌿 Eco-Tourism'),
+                          _buildHighlightBadge(
+                            strings.localized('🌿 Ekowisata', '🌿 Eco-tourism'),
+                          ),
                           const SizedBox(width: 8),
-                          _buildHighlightBadge('📸 Spot Estetik'),
+                          _buildHighlightBadge(
+                            strings.localized('📸 Spot Estetik', '📸 Scenic spot'),
+                          ),
                           const SizedBox(width: 8),
-                          _buildHighlightBadge('🧭 Guide Lokal'),
+                          _buildHighlightBadge(
+                            strings.localized('🧭 Pemandu Lokal', '🧭 Local guide'),
+                          ),
                         ],
                       ),
 
                       const SizedBox(height: 22),
 
                       Text(
-                        'Tentang Destinasi',
+                        strings.localized('Tentang Destinasi', 'About this destination'),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -193,7 +203,10 @@ class DestinationDetailScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Nikmati pesona alam nusantara dengan panorama memukau, suasana eksklusif, dan panduan budget transparan tanpa biaya tersembunyi. Pengalaman liburan berkesan yang dirancang khusus untuk kenyamanan Anda.',
+                        strings.localized(
+                          'Nikmati pesona alam nusantara dengan panorama memukau, suasana eksklusif, dan panduan budget transparan tanpa biaya tersembunyi. Pengalaman liburan berkesan yang dirancang khusus untuk kenyamanan Anda.',
+                          'Enjoy the beauty of Indonesia with stunning scenery, an exclusive atmosphere, and transparent budget guidance with no hidden fees. A memorable holiday designed for your comfort.',
+                        ),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w400,
@@ -222,7 +235,7 @@ class DestinationDetailScreen extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'Estimasi Biaya Paket',
+                                  strings.localized('Estimasi Biaya Paket', 'Package Cost Estimate'),
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -239,7 +252,7 @@ class DestinationDetailScreen extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    'Best Deal',
+                                    strings.localized('Penawaran Terbaik', 'Best Deal'),
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
@@ -260,7 +273,10 @@ class DestinationDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Termasuk tiket masuk, transportasi lokal, dan asuransi perjalanan.',
+                              strings.localized(
+                                'Termasuk tiket masuk, transportasi lokal, dan asuransi perjalanan.',
+                                'Includes admission, local transportation, and travel insurance.',
+                              ),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11,
                                 color: AppColors.textSecondary,
@@ -303,7 +319,7 @@ class DestinationDetailScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Mulai dari',
+                          strings.localized('Mulai dari', 'Starting at'),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 10,
                             color: AppColors.textSecondary,
@@ -344,7 +360,7 @@ class DestinationDetailScreen extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                'Rencanakan Trip',
+                                strings.localized('Rencanakan Perjalanan', 'Plan a Trip'),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,

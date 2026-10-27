@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/preferences_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../auth/login_screen.dart';
@@ -86,6 +88,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
+    final items = [
+      OnboardingItem(
+        title: strings.localized(
+          'Jelajahi Keindahan Nusantara',
+          'Explore the Beauty of Indonesia',
+        ),
+        description: strings.localized(
+          'Temukan destinasi eksotis tersembunyi di penjuru Indonesia dengan sentuhan kurasi perjalanan yang berkelas.',
+          'Discover hidden exotic destinations across Indonesia with thoughtfully curated travel experiences.',
+        ),
+        imagePath: _items[0].imagePath,
+        tagLocation: _items[0].tagLocation,
+        visualType: _items[0].visualType,
+      ),
+      OnboardingItem(
+        title: strings.localized('Liburan Sesuai Budget', 'Travel Within Your Budget'),
+        description: strings.localized(
+          'Rancang estimasi anggaran secara transparan dan nikmati liburan impian tanpa kompromi finansial.',
+          'Plan your spending transparently and enjoy your dream holiday without financial compromise.',
+        ),
+        imagePath: _items[1].imagePath,
+        tagLocation: _items[1].tagLocation,
+        visualType: _items[1].visualType,
+      ),
+      OnboardingItem(
+        title: strings.localized(
+          'Semua Rencana dalam Satu Aplikasi',
+          'All Your Plans in One App',
+        ),
+        description: strings.localized(
+          'Itinerary pintar, navigasi peta interaktif, dan panduan AI Concierge siap menemani setiap langkahmu.',
+          'Smart itineraries, interactive maps, and an AI concierge are ready to guide every step.',
+        ),
+        imagePath: _items[2].imagePath,
+        tagLocation: _items[2].tagLocation,
+        visualType: _items[2].visualType,
+      ),
+    ];
     final bool isLastPage = _currentPage == _items.length - 1;
 
     return Scaffold(
@@ -156,7 +197,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ),
                         ),
                         child: Text(
-                          'Lewati',
+                          strings.localized('Lewati', 'Skip'),
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -174,7 +215,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
-                itemCount: _items.length,
+                itemCount: items.length,
                 onPageChanged: (index) {
                   setState(() {
                     _currentPage = index;
@@ -183,7 +224,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemBuilder: (context, index) {
                   return SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    child: OnboardingCard(item: _items[index]),
+                    child: OnboardingCard(item: items[index]),
                   );
                 },
               ),
@@ -197,7 +238,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         MinimalPageIndicator(
-                          count: _items.length,
+                          count: items.length,
                           currentIndex: _currentPage,
                         ),
                         const SizedBox(height: 18),
@@ -219,7 +260,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  'Mulai Jelajah',
+                                  strings.localized('Mulai Jelajah', 'Start Exploring'),
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -243,7 +284,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       children: [
                         // Minimal page indicator
                         MinimalPageIndicator(
-                          count: _items.length,
+                          count: items.length,
                           currentIndex: _currentPage,
                         ),
 
@@ -266,7 +307,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'Lanjut',
+                                strings.localized('Lanjut', 'Continue'),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,

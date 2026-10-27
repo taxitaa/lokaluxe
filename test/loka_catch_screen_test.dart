@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:lokaluxe/core/services/localization_provider.dart';
 import 'package:lokaluxe/screens/game/loka_catch_screen.dart';
 
 void main() {
@@ -9,7 +11,12 @@ void main() {
   testWidgets('LokaCatch uses the open-mouth Komodo instead of a basket', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: LokaCatchScreen()));
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => LocalizationProvider(),
+        child: const MaterialApp(home: LokaCatchScreen()),
+      ),
+    );
     await tester.pump();
 
     expect(

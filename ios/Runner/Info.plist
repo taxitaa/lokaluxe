@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>LokaLuxe menggunakan lokasi perangkat untuk menentukan arah kiblat secara akurat.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>LokaLuxe menggunakan Face ID untuk memverifikasi identitas Anda saat masuk dan melindungi akun.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

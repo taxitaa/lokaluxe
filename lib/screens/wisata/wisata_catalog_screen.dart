@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/services/map_places_service.dart';
 import '../itinerary/itinerary_screen.dart';
 
@@ -103,11 +104,12 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<CurrencyProvider>();
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: Text(
-          'Indonesian Attractions',
+          strings.attractionCatalogTitle,
           style: GoogleFonts.playfairDisplay(
             color: Color(0xFF1A1A1A),
             fontWeight: FontWeight.bold,
@@ -178,7 +180,7 @@ class _WisataCatalogScreenState extends State<WisataCatalogScreen> {
                   controller: _searchController,
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
-                    hintText: 'Search attractions, cities, or provinces',
+                    hintText: strings.searchAttractions,
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: Colors.white,

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/main_navigation_screen.dart';
 import 'register_screen.dart';
 import '../../core/services/auth_service.dart';
-import '../../core/services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,10 +16,12 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController =
-      TextEditingController(text: '');
-  final TextEditingController _passwordController =
-      TextEditingController(text: '');
+  final TextEditingController _emailController = TextEditingController(
+    text: '',
+  );
+  final TextEditingController _passwordController = TextEditingController(
+    text: '',
+  );
   bool _obscurePassword = true;
 
   @override
@@ -31,15 +35,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isFingerprintLoading = false;
   bool _isFaceLoading = false;
 
-  @override
   Future<void> _handleLogin() async {
+    final strings = context.read<LocalizationProvider>().strings;
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email and password are required.'),
+        SnackBar(
+          content: Text(strings.loginRequired),
           backgroundColor: AppColors.errorRed,
         ),
       );
@@ -48,10 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
-    final result = await AuthService.login(
-      email: email,
-      password: password,
-    );
+    final result = await AuthService.login(email: email, password: password);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -64,7 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  result.message,
+                  strings.localized(
+                    'Selamat datang kembali, ${result.user?.fullName ?? ""}!',
+                    'Welcome back, ${result.user?.fullName ?? ""}!',
+                  ),
                   style: GoogleFonts.plusJakartaSans(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -79,9 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const MainNavigationScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -105,6 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleBiometricLogin({String? method}) async {
+    final strings = context.read<LocalizationProvider>().strings;
     setState(() {
       if (method == 'face') {
         _isFaceLoading = true;
@@ -139,7 +142,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  result.message,
+                  strings.localized(
+                    'Selamat datang kembali, ${result.user?.fullName ?? ""}!',
+                    'Welcome back, ${result.user?.fullName ?? ""}!',
+                  ),
                   style: GoogleFonts.plusJakartaSans(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -154,9 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const MainNavigationScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -181,6 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Scaffold(
       backgroundColor: AppColors.pureWhite,
       appBar: AppBar(
@@ -238,9 +243,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       Image.asset(
                         'assets/images/login_hero.jpg',
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: AppColors.primaryGreen,
-                        ),
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(color: AppColors.primaryGreen),
                       ),
                       // Gradient shadow
                       DecoratedBox(
@@ -302,7 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Headline & Subtitle
               Text(
-                'Sign in to LocalLuxe',
+                strings.loginTitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -312,7 +316,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Kelola anggaran & rute perjalanan mewahmu dengan mudah.',
+                strings.loginSubtitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
@@ -334,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
-                  labelText: 'Masukkan email Anda',
+                  labelText: strings.emailHint,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -396,7 +400,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.pureWhite,
-                  labelText: 'Masukkan password Anda',
+                  labelText: strings.passwordHint,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
@@ -477,7 +481,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Sign in',
+                              strings.signIn,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -499,7 +503,7 @@ class _LoginScreenState extends State<LoginScreen> {
               // "atau masuk cepat"
               Center(
                 child: Text(
-                  'atau masuk cepat',
+                  strings.quickSignIn,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
@@ -562,7 +566,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      "Don't have an account? ",
+                      strings.noAccount,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -577,7 +581,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         );
                       },
                       child: Text(
-                        'Create an account',
+                        strings.createAccount,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -610,10 +614,7 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: BoxDecoration(
           color: AppColors.pureWhite,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppColors.borderLight,
-            width: 1.2,
-          ),
+          border: Border.all(color: AppColors.borderLight, width: 1.2),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),

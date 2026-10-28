@@ -119,6 +119,19 @@ class CurrencyProvider extends ChangeNotifier {
     );
   }
 
+  double convertBetween({
+    required double amount,
+    required String sourceCurrency,
+    required String targetCurrency,
+  }) {
+    return CurrencyService.convertBetween(
+      amount: amount,
+      sourceCurrency: sourceCurrency,
+      targetCurrency: targetCurrency,
+      rates: _rates,
+    );
+  }
+
   /// Mendapatkan simbol mata uang aktif (misal: "Rp", "$", "€")
   String get currencySymbol =>
       CurrencyService.currencySymbols[_selectedCurrency] ?? '';

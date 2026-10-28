@@ -188,6 +188,24 @@ class CurrencyService {
     return amountIDR * rate;
   }
 
+  /// Converts an amount between any supported currencies using IDR as base.
+  static double convertBetween({
+    required double amount,
+    required String sourceCurrency,
+    required String targetCurrency,
+    required Map<String, double> rates,
+  }) {
+    if (sourceCurrency == targetCurrency) return amount;
+    final amountIDR = sourceCurrency == 'IDR'
+        ? amount
+        : amount / (rates[sourceCurrency] ?? _fallbackRates[sourceCurrency] ?? 1);
+    return convert(
+      amountIDR: amountIDR,
+      targetCurrency: targetCurrency,
+      rates: rates,
+    );
+  }
+
   /// Memformat nilai angka sesuai mata uang dengan simbol & desimal yang tepat
   ///
   /// [amount] nilai numerik

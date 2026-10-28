@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 import '../../core/database/db_helper.dart';
 import '../../core/models/trip_model.dart';
 import '../../core/services/currency_provider.dart';
+import '../../core/services/currency_service.dart';
 import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
 
@@ -38,6 +39,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   };
 
   double _selectedBudget = 0;
+  String? _inputCurrency;
   double _spent = 0;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -68,10 +70,16 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         _tripItems = items;
         if (trip != null) {
           _selectedBudget = trip.targetBudget;
-          _customController.text = context
-              .read<CurrencyProvider>()
-              .convertRaw(trip.targetBudget)
-              .toStringAsFixed(0);
+          final currencyProvider = context.read<CurrencyProvider>();
+          final inputCurrency = _effectiveInputCurrency(currencyProvider);
+          _customController.text = _formatInputAmount(
+            currencyProvider.convertBetween(
+              amount: trip.targetBudget,
+              sourceCurrency: 'IDR',
+              targetCurrency: inputCurrency,
+            ),
+            inputCurrency,
+          );
         } else {
           _selectedBudget = 0;
           _customController.clear();
@@ -164,10 +172,67 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
 
   void _updateBudget(double value, CurrencyProvider currencyProvider) {
     setState(() {
-      final rate = currencyProvider.convertRaw(1);
-      _selectedBudget = currencyProvider.selectedCurrency == 'IDR' || rate <= 0
-          ? value
-          : value / rate;
+      _selectedBudget = currencyProvider.convertBetween(
+        amount: value,
+        sourceCurrency: _effectiveInputCurrency(currencyProvider),
+        targetCurrency: 'IDR',
+      );
+    });
+  }
+
+  String _effectiveInputCurrency(CurrencyProvider currencyProvider) =>
+      _inputCurrency ?? currencyProvider.selectedCurrency;
+
+  String _formatInputAmount(double amount, String currency) =>
+      switch (currency) {
+        'USD' || 'EUR' => amount.toStringAsFixed(2),
+        _ => amount.round().toString(),
+      };
+
+  String? _budgetComparison(CurrencyProvider currencyProvider) {
+    if (_selectedBudget <= 0 || !_selectedBudget.isFinite) return null;
+
+    final inputCurrency = _effectiveInputCurrency(currencyProvider);
+    final preferredCurrency = currencyProvider.selectedCurrency;
+    final comparisonCurrency = inputCurrency == preferredCurrency
+        ? (inputCurrency == 'IDR' ? null : 'IDR')
+        : preferredCurrency;
+    if (comparisonCurrency == null) return null;
+
+    final converted = currencyProvider.convertBetween(
+      amount: _selectedBudget,
+      sourceCurrency: 'IDR',
+      targetCurrency: comparisonCurrency,
+    );
+    final formatted = CurrencyService.formatAmount(
+      converted,
+      comparisonCurrency,
+    );
+    return '${_tr("Perkiraan setara", "Approx. equivalent")}: $formatted';
+  }
+
+  void _changeInputCurrency(String currency, CurrencyProvider provider) {
+    final currentAmount = _customController.text.trim().isEmpty
+        ? null
+        : double.tryParse(_customController.text.trim());
+    final amountIDR = currentAmount == null
+        ? _selectedBudget
+        : provider.convertBetween(
+            amount: currentAmount,
+            sourceCurrency: _effectiveInputCurrency(provider),
+            targetCurrency: 'IDR',
+          );
+    setState(() {
+      _inputCurrency = currency;
+      _selectedBudget = amountIDR;
+      _customController.text = _formatInputAmount(
+        provider.convertBetween(
+          amount: amountIDR,
+          sourceCurrency: 'IDR',
+          targetCurrency: currency,
+        ),
+        currency,
+      );
     });
   }
 
@@ -504,7 +569,34 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               },
               decoration: InputDecoration(
                 labelText: _tr('Masukkan budget trip', 'Enter trip budget'),
-                prefixText: '${currencyProvider.currencySymbol} ',
+                prefixText:
+                    '${CurrencyService.currencySymbols[_effectiveInputCurrency(currencyProvider)] ?? ''} ',
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _effectiveInputCurrency(currencyProvider),
+                      items: CurrencyService.currencySymbols.keys
+                          .map(
+                            (currency) => DropdownMenuItem(
+                              value: currency,
+                              child: Text(currency),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _isSaving
+                          ? null
+                          : (currency) {
+                              if (currency != null) {
+                                _changeInputCurrency(
+                                  currency,
+                                  currencyProvider,
+                                );
+                              }
+                            },
+                    ),
+                  ),
+                ),
                 filled: true,
                 fillColor: AppColors.pureWhite,
                 border: OutlineInputBorder(
@@ -512,6 +604,18 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                 ),
               ),
             ),
+            if (_budgetComparison(currencyProvider) case final comparison?)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 4),
+                child: Text(
+                  comparison,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryGreen,
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
             Container(
               width: double.infinity,

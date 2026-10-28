@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
-
 import '../../core/services/localization_provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/biometric_service.dart';

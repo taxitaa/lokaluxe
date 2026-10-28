@@ -76,9 +76,12 @@ class MiniGameScreen extends StatelessWidget {
                 reward: s.voucher,
                 playLabel: s.play,
                 onTap: () async {
-                  await Navigator.of(context).push(
+                  final returnToHome = await Navigator.of(context).push<bool>(
                     MaterialPageRoute(builder: (_) => const LokaCatchScreen()),
                   );
+                  if (returnToHome == true && context.mounted) {
+                    Navigator.of(context).pop();
+                  }
                 },
               ),
 

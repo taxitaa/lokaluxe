@@ -742,7 +742,11 @@ class _LokaCatchScreenState extends State<LokaCatchScreen>
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    final navigator = Navigator.of(context);
+                    navigator.pop();
+                    navigator.pop(true);
+                  },
                   child: Text(
                     strings.home,
                     style: GoogleFonts.plusJakartaSans(

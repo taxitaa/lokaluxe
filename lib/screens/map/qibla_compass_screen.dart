@@ -1,13 +1,23 @@
 import 'dart:async';
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-
+import '../../core/services/app_strings.dart';
+import '../../core/services/localization_provider.dart';
 import '../../core/theme/app_colors.dart';
+
+enum _LocationError {
+  serviceDisabled,
+  permissionPermanentlyDenied,
+  permissionRequired,
+  unavailable,
+  locationSettingsUnavailable,
+  appSettingsUnavailable,
+}
 
 double calculateQiblaBearing(LatLng location) {
   const kaabaLatitude = 21.4225;
@@ -44,9 +54,10 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
   MagnetometerEvent? _magneticField;
   AccelerometerEvent? _gravity;
   double? _heading;
+  double? _smoothedHeading;
   LatLng? _currentLocation;
-  String? _sensorError;
-  String? _locationError;
+  bool _sensorUnavailable = false;
+  _LocationError? _locationError;
   bool _isRequestingLocation = false;
   bool _locationServiceDisabled = false;
   bool _permissionPermanentlyDenied = false;
@@ -55,6 +66,33 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
     final location = _currentLocation;
     return location == null ? null : calculateQiblaBearing(location);
   }
+
+  String _locationErrorText(AppStrings strings) => switch (_locationError!) {
+    _LocationError.serviceDisabled => strings.localized(
+      'Layanan lokasi perangkat sedang nonaktif. Aktifkan GPS agar arah kiblat sesuai posisi kamu.',
+      'Location services are off. Turn on GPS to find the Qibla direction for your location.',
+    ),
+    _LocationError.permissionPermanentlyDenied => strings.localized(
+      'Izin lokasi ditolak permanen. Aktifkan izin lokasi untuk LokaLuxe melalui Pengaturan aplikasi.',
+      'Location permission is permanently denied. Enable location access for LokaLuxe in your app settings.',
+    ),
+    _LocationError.permissionRequired => strings.localized(
+      'Kompas kiblat membutuhkan izin lokasi perangkat. Izinkan akses lokasi saat aplikasi digunakan.',
+      'The Qibla compass needs your location. Allow location access while using the app.',
+    ),
+    _LocationError.unavailable => strings.localized(
+      'Lokasi perangkat belum bisa didapatkan. Periksa GPS dan izin lokasi.',
+      'Could not get your device location. Check GPS and location permissions.',
+    ),
+    _LocationError.locationSettingsUnavailable => strings.localized(
+      'Pengaturan lokasi tidak dapat dibuka. Aktifkan GPS melalui Pengaturan perangkat.',
+      'Could not open location settings. Turn on GPS in your device settings.',
+    ),
+    _LocationError.appSettingsUnavailable => strings.localized(
+      'Pengaturan aplikasi tidak dapat dibuka. Aktifkan izin lokasi LokaLuxe secara manual.',
+      'Could not open app settings. Manually enable location access for LokaLuxe.',
+    ),
+  };
 
   @override
   void initState() {
@@ -100,7 +138,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _setLocationError(
-          'Layanan lokasi perangkat sedang nonaktif. Aktifkan GPS agar arah kiblat sesuai posisi kamu.',
+          _LocationError.serviceDisabled,
           serviceDisabled: true,
         );
         return;
@@ -115,16 +153,14 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
 
         if (permission == LocationPermission.deniedForever) {
           _setLocationError(
-            'Izin lokasi ditolak permanen. Aktifkan izin lokasi untuk LokaLuxe melalui Pengaturan aplikasi.',
+            _LocationError.permissionPermanentlyDenied,
             permanentlyDenied: true,
           );
           return;
         }
         if (permission != LocationPermission.whileInUse &&
             permission != LocationPermission.always) {
-          _setLocationError(
-            'Kompas kiblat membutuhkan izin lokasi perangkat. Izinkan akses lokasi saat aplikasi digunakan.',
-          );
+          _setLocationError(_LocationError.permissionRequired);
           return;
         }
       }
@@ -165,13 +201,13 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
   }
 
   void _setLocationError(
-    String message, {
+    _LocationError error, {
     bool serviceDisabled = false,
     bool permanentlyDenied = false,
   }) {
     if (!mounted) return;
     setState(() {
-      _locationError = message;
+      _locationError = error;
       _locationServiceDisabled = serviceDisabled;
       _permissionPermanentlyDenied = permanentlyDenied;
     });
@@ -179,9 +215,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
 
   void _handleLocationError(Object error) {
     debugPrint('[QiblaCompassScreen] Device location error: $error');
-    _setLocationError(
-      'Lokasi perangkat belum bisa didapatkan. Periksa GPS dan izin lokasi.',
-    );
+    _setLocationError(_LocationError.unavailable);
   }
 
   Future<void> _openLocationAction() async {
@@ -189,7 +223,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
       final opened = await Geolocator.openLocationSettings();
       if (!opened && mounted) {
         _setLocationError(
-          'Pengaturan lokasi tidak dapat dibuka. Aktifkan GPS melalui Pengaturan perangkat.',
+          _LocationError.locationSettingsUnavailable,
           serviceDisabled: true,
         );
       }
@@ -199,7 +233,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
       final opened = await Geolocator.openAppSettings();
       if (!opened && mounted) {
         _setLocationError(
-          'Pengaturan aplikasi tidak dapat dibuka. Aktifkan izin lokasi LokaLuxe secara manual.',
+          _LocationError.appSettingsUnavailable,
           permanentlyDenied: true,
         );
       }
@@ -212,7 +246,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
     debugPrint('[QiblaCompassScreen] Compass sensor error: $error');
     if (mounted) {
       setState(() {
-        _sensorError = 'Sensor kompas tidak tersedia di perangkat ini.';
+        _sensorUnavailable = true;
       });
     }
   }
@@ -243,22 +277,40 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
     final northY = gz * hx - gx * hz;
     final azimuth = math.atan2(hy, northY);
     final heading = (azimuth * 180 / math.pi + 360) % 360;
+    final previousHeading = _smoothedHeading;
+    final previousNormalized = previousHeading == null
+        ? null
+        : (previousHeading % 360 + 360) % 360;
+    final angularDifference = previousNormalized == null
+        ? 0.0
+        : (heading - previousNormalized + 540) % 360 - 180;
+    final smoothedHeading = previousHeading == null
+        ? heading
+        : previousHeading + angularDifference * 0.18;
+    final normalizedHeading = (smoothedHeading % 360 + 360) % 360;
+    final shouldRebuild =
+        previousHeading == null ||
+        (smoothedHeading - previousHeading).abs() >= 0.12 ||
+        _sensorUnavailable;
 
-    if (mounted) {
+    _smoothedHeading = smoothedHeading;
+    if (mounted && shouldRebuild) {
       setState(() {
-        _heading = heading;
-        _sensorError = null;
+        _heading = normalizedHeading;
+        _sensorUnavailable = false;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.watch<LocalizationProvider>().strings;
     final heading = _heading;
     final qiblaBearing = _qiblaBearing;
-    final relativeQibla = heading == null || qiblaBearing == null
+    final smoothedHeading = _smoothedHeading;
+    final relativeQibla = smoothedHeading == null || qiblaBearing == null
         ? null
-        : (qiblaBearing - heading + 360) % 360;
+        : qiblaBearing - smoothedHeading;
 
     return Scaffold(
       backgroundColor: AppColors.warmCream,
@@ -267,7 +319,10 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
         foregroundColor: AppColors.textDark,
         elevation: 0,
         title: Text(
-          'Kompas & Arah Kiblat',
+          strings.localized(
+            'Kompas & Arah Kiblat',
+            'Compass & Qibla Direction',
+          ),
           style: GoogleFonts.plusJakartaSans(
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -282,7 +337,10 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
           child: Column(
             children: [
               Text(
-                'Arahkan bagian atas ponsel ke arah kiblat',
+                strings.localized(
+                  'Arahkan bagian atas ponsel ke arah kiblat',
+                  'Point the top of your phone toward the Qibla',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
@@ -291,11 +349,14 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
               ),
               if (_locationError != null) ...[
                 const SizedBox(height: 16),
-                _buildLocationPermissionNotice(),
+                _buildLocationPermissionNotice(strings),
               ] else ...[
                 const SizedBox(height: 10),
                 Text(
-                  'Untuk menentukan arah kiblat sesuai posisi, izinkan akses lokasi saat aplikasi meminta izin.',
+                  strings.localized(
+                    'Untuk menentukan arah kiblat sesuai posisi, izinkan akses lokasi saat aplikasi meminta izin.',
+                    'Allow location access when prompted to find the Qibla direction for your location.',
+                  ),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
@@ -339,8 +400,10 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                                     color: AppColors.primaryGreen,
                                   ),
                                 )
-                              : Transform.rotate(
-                                  angle: -heading * math.pi / 180,
+                              : AnimatedRotation(
+                                  turns: -(_smoothedHeading ?? heading) / 360,
+                                  duration: const Duration(milliseconds: 100),
+                                  curve: Curves.easeOutCubic,
                                   child: const CustomPaint(
                                     painter: _CompassDialPainter(),
                                   ),
@@ -348,23 +411,25 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                         ),
                       ),
                       if (relativeQibla != null)
-                        Transform.rotate(
-                          angle: relativeQibla * math.pi / 180,
-                          child: const Align(
+                        AnimatedRotation(
+                          turns: relativeQibla / 360,
+                          duration: const Duration(milliseconds: 100),
+                          curve: Curves.easeOutCubic,
+                          child: Align(
                             alignment: Alignment.topCenter,
                             child: Padding(
-                              padding: EdgeInsets.only(top: 12),
+                              padding: const EdgeInsets.only(top: 12),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.navigation_rounded,
                                     size: 38,
                                     color: AppColors.successGreen,
                                   ),
                                   Text(
-                                    'KIBLAT',
-                                    style: TextStyle(
+                                    strings.localized('KIBLAT', 'QIBLA'),
+                                    style: const TextStyle(
                                       color: AppColors.primaryGreen,
                                       fontSize: 9,
                                       fontWeight: FontWeight.w800,
@@ -389,9 +454,12 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                 ),
               ),
               const SizedBox(height: 24),
-              if (_sensorError != null)
+              if (_sensorUnavailable)
                 Text(
-                  _sensorError!,
+                  strings.localized(
+                    'Sensor kompas tidak tersedia di perangkat ini.',
+                    'The compass sensor is unavailable on this device.',
+                  ),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
@@ -401,8 +469,14 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
               else
                 Text(
                   heading == null
-                      ? 'Menghubungkan sensor kompas...'
-                      : 'Arah kompas ${heading.round()}°',
+                      ? strings.localized(
+                          'Menghubungkan sensor kompas...',
+                          'Connecting to compass sensor...',
+                        )
+                      : strings.localized(
+                          'Arah kompas ${heading.round()}°',
+                          'Compass heading ${heading.round()}°',
+                        ),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -424,7 +498,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                 child: Column(
                   children: [
                     Text(
-                      'ARAH KIBLAT',
+                      strings.localized('ARAH KIBLAT', 'QIBLA BEARING'),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
@@ -442,7 +516,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                       ),
                     ),
                     Text(
-                      'dari utara',
+                      strings.localized('dari utara', 'from north'),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
@@ -454,7 +528,10 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
               ),
               const SizedBox(height: 14),
               Text(
-                'Kalibrasikan kompas dengan menggerakkan ponsel membentuk angka delapan.',
+                strings.localized(
+                  'Kalibrasikan kompas dengan menggerakkan ponsel membentuk angka delapan.',
+                  'Calibrate the compass by moving your phone in a figure-eight pattern.',
+                ),
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 11,
@@ -469,12 +546,12 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
     );
   }
 
-  Widget _buildLocationPermissionNotice() {
+  Widget _buildLocationPermissionNotice(AppStrings strings) {
     final actionLabel = _locationServiceDisabled
-        ? 'Aktifkan GPS'
+        ? strings.localized('Aktifkan GPS', 'Turn on GPS')
         : _permissionPermanentlyDenied
-        ? 'Buka Pengaturan'
-        : 'Izinkan Lokasi';
+        ? strings.localized('Buka Pengaturan', 'Open Settings')
+        : strings.localized('Izinkan Lokasi', 'Allow Location');
 
     return Container(
       width: double.infinity,
@@ -498,7 +575,7 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  _locationError!,
+                  _locationErrorText(strings),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     height: 1.45,
@@ -531,7 +608,12 @@ class _QiblaCompassScreenState extends State<QiblaCompassScreen>
                       size: 18,
                     ),
               label: Text(
-                _isRequestingLocation ? 'Meminta izin...' : actionLabel,
+                _isRequestingLocation
+                    ? strings.localized(
+                        'Meminta izin...',
+                        'Requesting permission...',
+                      )
+                    : actionLabel,
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryGreen,

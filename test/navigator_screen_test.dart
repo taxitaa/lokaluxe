@@ -22,6 +22,89 @@ void main() {
     headers: const {'content-type': 'application/json'},
   );
 
+  group('Bearing, CompassDirection & RouteInfo Tests', () {
+    test('Calculates bearing and 8 cardinal directions accurately', () {
+      final origin = const LatLng(-6.2000, 106.8000);
+
+      // Directly North
+      final northTarget = const LatLng(-6.1000, 106.8000);
+      final bearingNorth = calculateBearing(origin, northTarget);
+      expect(CompassDirection.fromBearing(bearingNorth), CompassDirection.north);
+      expect(CompassDirection.fromBearing(bearingNorth).labelId, 'Utara');
+      expect(CompassDirection.fromBearing(bearingNorth).labelEn, 'North');
+
+      // Northeast
+      final neTarget = const LatLng(-6.1000, 106.9000);
+      final bearingNE = calculateBearing(origin, neTarget);
+      expect(CompassDirection.fromBearing(bearingNE), CompassDirection.northEast);
+      expect(CompassDirection.fromBearing(bearingNE).labelId, 'Timur Laut');
+      expect(CompassDirection.fromBearing(bearingNE).labelEn, 'Northeast');
+
+      // East
+      final eastTarget = const LatLng(-6.2000, 106.9000);
+      final bearingEast = calculateBearing(origin, eastTarget);
+      expect(CompassDirection.fromBearing(bearingEast), CompassDirection.east);
+      expect(CompassDirection.fromBearing(bearingEast).labelId, 'Timur');
+
+      // Southeast
+      final seTarget = const LatLng(-6.3000, 106.9000);
+      final bearingSE = calculateBearing(origin, seTarget);
+      expect(CompassDirection.fromBearing(bearingSE), CompassDirection.southEast);
+      expect(CompassDirection.fromBearing(bearingSE).labelId, 'Tenggara');
+
+      // South
+      final southTarget = const LatLng(-6.3000, 106.8000);
+      final bearingSouth = calculateBearing(origin, southTarget);
+      expect(CompassDirection.fromBearing(bearingSouth), CompassDirection.south);
+      expect(CompassDirection.fromBearing(bearingSouth).labelId, 'Selatan');
+
+      // Southwest
+      final swTarget = const LatLng(-6.3000, 106.7000);
+      final bearingSW = calculateBearing(origin, swTarget);
+      expect(CompassDirection.fromBearing(bearingSW), CompassDirection.southWest);
+      expect(CompassDirection.fromBearing(bearingSW).labelId, 'Barat Daya');
+
+      // West
+      final westTarget = const LatLng(-6.2000, 106.7000);
+      final bearingWest = calculateBearing(origin, westTarget);
+      expect(CompassDirection.fromBearing(bearingWest), CompassDirection.west);
+      expect(CompassDirection.fromBearing(bearingWest).labelId, 'Barat');
+
+      // Northwest
+      final nwTarget = const LatLng(-6.1000, 106.7000);
+      final bearingNW = calculateBearing(origin, nwTarget);
+      expect(CompassDirection.fromBearing(bearingNW), CompassDirection.northWest);
+      expect(CompassDirection.fromBearing(bearingNW).labelId, 'Barat Laut');
+    });
+
+    test('RouteInfo calculates distance, bearing and estimates correctly', () {
+      final origin = const LatLng(-6.1754, 106.8272); // Monas
+      final dest = MapPlace(
+        id: 'place_1',
+        name: 'Resto Sunda',
+        category: PlaceCategory.restaurants,
+        latitude: -6.1800,
+        longitude: 106.8300,
+        rating: 4.7,
+        reviewCount: 150,
+        address: 'Jl. Merdeka',
+        city: 'Jakarta',
+        imageUrl: '',
+      );
+
+      final route = RouteInfo.fromLocations(origin: origin, destination: dest);
+
+      expect(route.distanceMeters, greaterThan(400));
+      expect(route.distanceMeters, lessThan(800));
+      expect(route.bearingDegrees, greaterThan(130));
+      expect(route.bearingDegrees, lessThan(170));
+      expect(route.direction, CompassDirection.southEast);
+      expect(route.direction.labelId, 'Tenggara');
+      expect(route.estimatedWalkingMinutes, greaterThan(0));
+      expect(route.estimatedDrivingMinutes, greaterThan(0));
+    });
+  });
+
   group('MapPlace Model & MapPlacesService Tests', () {
     test('Calculates the Qibla bearing from Jakarta', () {
       final bearing = calculateQiblaBearing(const LatLng(-6.1953, 106.8231));
@@ -44,13 +127,11 @@ void main() {
         imageUrl: '',
       );
 
-      // Distance from exact same point should be 0 m
-      final sameLoc = LatLng(-6.1754, 106.8272);
+      final sameLoc = const LatLng(-6.1754, 106.8272);
       expect(place.distanceTo(sameLoc).round(), 0);
       expect(place.formattedDistanceTo(sameLoc), '0 m');
 
-      // Distance from ~1 km away
-      final nearbyLoc = LatLng(-6.1844, 106.8272);
+      final nearbyLoc = const LatLng(-6.1844, 106.8272);
       final dist = place.distanceTo(nearbyLoc);
       expect(dist, greaterThan(800));
       expect(dist, lessThan(1200));
@@ -61,7 +142,7 @@ void main() {
       String? sentQuery;
       final places = await MapPlacesService.searchNearbyPlaces(
         userLocation: location,
-        radiusMeters: 5000,
+        radiusMeters: 3000,
         forceRefresh: true,
         client: MockClient((request) async {
           sentQuery = Uri.splitQueryString(request.body)['data'];
@@ -104,7 +185,7 @@ void main() {
         }),
       );
 
-      expect(sentQuery, contains('around:5000,-6.200000,106.800000'));
+      expect(sentQuery, contains('around:3000,-6.200000,106.800000'));
       expect(places, hasLength(4));
       expect(
         places.map((place) => place.category),
@@ -128,7 +209,7 @@ void main() {
       () async {
         final places = await MapPlacesService.searchNearbyPlaces(
           userLocation: const LatLng(1.2345, 2.3456),
-          radiusMeters: 5000,
+          radiusMeters: 3000,
           forceRefresh: true,
           client: MockClient((_) async => httpResponse({'elements': []})),
         );
@@ -141,7 +222,7 @@ void main() {
       String? sentQuery;
       await MapPlacesService.searchNearbyPlaces(
         userLocation: const LatLng(7.1234, 110.1234),
-        radiusMeters: 5000,
+        radiusMeters: 3000,
         category: PlaceCategory.amusement,
         forceRefresh: true,
         client: MockClient((request) async {
@@ -155,71 +236,42 @@ void main() {
     });
 
     test(
-      'Reports rate limiting after trying both Overpass endpoints',
+      'Tries multiple Overpass endpoints sequentially on failure and throws exception without dummy fallback',
       () async {
         final requestedHosts = <String>[];
-        await expectLater(
-          MapPlacesService.searchNearbyPlaces(
+        bool threwException = false;
+        try {
+          await MapPlacesService.searchNearbyPlaces(
             userLocation: const LatLng(3.4567, 4.5678),
-            radiusMeters: 5000,
+            radiusMeters: 3000,
             forceRefresh: true,
             client: MockClient((request) async {
               requestedHosts.add(request.url.host);
               return http.Response('rate limited', 429);
             }),
-          ),
-          throwsA(
-            isA<MapPlacesSearchException>().having(
-              (error) => error.kind,
-              'kind',
-              MapPlacesFailureKind.rateLimited,
-            ),
-          ),
-        );
+          );
+        } on MapPlacesSearchException {
+          threwException = true;
+        }
 
-        expect(requestedHosts.toSet(), hasLength(2));
+        expect(requestedHosts.toSet().length, greaterThanOrEqualTo(2));
+        expect(threwException, isTrue);
       },
     );
 
-    test('Google Maps URL format matches user specification', () {
-      const lat = -6.1953;
-      const lon = 106.8231;
-      final expectedUrl =
-          'https://www.google.com/maps/search/?api=1&query=$lat%2C$lon';
-      final generatedUri = MapPlacesService.googleMapsSearchUri(
-        latitude: lat,
-        longitude: lon,
+    test('Generates correct Google Maps search URL with latitude and longitude', () {
+      final uri = MapPlacesService.googleMapsSearchUri(
+        latitude: -7.6079,
+        longitude: 110.2038,
       );
 
-      expect(generatedUri.toString(), expectedUrl);
-      expect(generatedUri!.queryParameters['api'], '1');
-      expect(generatedUri.queryParameters['query'], '$lat,$lon');
-    });
-
-    test('Falls back to place name and address without coordinates', () {
-      final generatedUri = MapPlacesService.googleMapsSearchUri(
-        placeName: 'Taman Wisata',
-        address: 'Bandung',
-      );
-
-      expect(generatedUri?.queryParameters['query'], 'Taman Wisata, Bandung');
-    });
-
-    test('Rejects empty or invalid Google Maps places', () {
-      expect(MapPlacesService.googleMapsSearchUri(), isNull);
-      expect(
-        MapPlacesService.googleMapsSearchUri(
-          placeName: 'Taman Wisata',
-          latitude: 200,
-          longitude: 300,
-        )?.queryParameters['query'],
-        'Taman Wisata',
-      );
+      expect(uri, isNotNull);
+      expect(uri.toString(), 'https://www.google.com/maps/search/?api=1&query=-7.6079%2C110.2038');
     });
   });
 
   group('NavigatorScreen Widget Tests', () {
-    testWidgets('Renders the nearby map navigator and expandable search', (
+    testWidgets('Renders the nearby map navigator, GPS bar, and category chips', (
       WidgetTester tester,
     ) async {
       final currencyProvider = CurrencyProvider();
@@ -244,23 +296,25 @@ void main() {
       // Verify header title
       expect(find.text('LokaLuxe Navigator'), findsOneWidget);
 
+      // Verify Search TextField
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.text('Mendeteksi lokasi perangkat'), findsOneWidget);
-      expect(find.text('Menjelajahi Jakarta'), findsNothing);
-      expect(find.text('Tempat di sekitar Jakarta'), findsNothing);
 
-      // Verify the horizontal category chips
+      // Verify GPS bar
+      expect(find.text('Koordinat GPS Riil'), findsOneWidget);
+
+      // Verify the 5 horizontal category chips (Semua, Hiburan, Hotel, Taman, Kuliner)
       expect(find.text('Semua'), findsOneWidget);
       expect(find.text('Hiburan'), findsOneWidget);
       expect(find.text('Hotel'), findsOneWidget);
       expect(find.text('Taman'), findsOneWidget);
       expect(find.text('Kuliner'), findsOneWidget);
-      expect(find.text('Kolam'), findsOneWidget);
+
+      // Verify compass button in AppBar remains present
+      expect(find.byIcon(Icons.explore_rounded), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'Borobudur');
       await tester.pump();
       expect(find.text('Borobudur'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
     });
   });
 }

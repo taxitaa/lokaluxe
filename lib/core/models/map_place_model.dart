@@ -3,10 +3,10 @@ import 'package:latlong2/latlong.dart';
 
 enum PlaceCategory {
   all('all', 'Semua', 'All'),
-  amusement('amusement', 'Wahana & Hiburan', 'Amusement'),
-  hotel('hotel', 'Hotel & Resort', 'Hotel'),
-  park('park', 'Taman & Alam', 'Park'),
-  restaurants('restaurants', 'Restoran & Kuliner', 'Restaurants'),
+  amusement('amusement', 'Hiburan', 'Amusement'),
+  hotel('hotel', 'Hotel', 'Hotel'),
+  park('park', 'Taman', 'Park'),
+  restaurants('restaurants', 'Kuliner', 'Culinary'),
   pool('pool', 'Kolam & Waterpark', 'Pool');
 
   final String key;
@@ -23,13 +23,16 @@ enum PlaceCategory {
         lower.contains('makan') ||
         lower.contains('cafe') ||
         lower.contains('kafe') ||
-        lower.contains('restaurant')) {
+        lower.contains('restaurant') ||
+        lower.contains('food')) {
       return PlaceCategory.restaurants;
     }
     if (lower.contains('hotel') ||
         lower.contains('resort') ||
         lower.contains('villa') ||
-        lower.contains('penginapan')) {
+        lower.contains('penginapan') ||
+        lower.contains('hostel') ||
+        lower.contains('lodging')) {
       return PlaceCategory.hotel;
     }
     if (lower.contains('amuse') ||
@@ -37,7 +40,10 @@ enum PlaceCategory {
         lower.contains('tematik') ||
         lower.contains('lampion') ||
         lower.contains('hiburan') ||
-        lower.contains('bermain')) {
+        lower.contains('bermain') ||
+        lower.contains('attraction') ||
+        lower.contains('museum') ||
+        lower.contains('zoo')) {
       return PlaceCategory.amusement;
     }
     if (lower.contains('pool') ||
@@ -54,11 +60,130 @@ enum PlaceCategory {
         lower.contains('pantai') ||
         lower.contains('gunung') ||
         lower.contains('bukit') ||
-        lower.contains('lembah')) {
+        lower.contains('lembah') ||
+        lower.contains('garden')) {
       return PlaceCategory.park;
     }
     return PlaceCategory.amusement;
   }
+}
+
+/// 8 Arah Mata Angin (Cardinal Directions)
+enum CompassDirection {
+  north('Utara', 'North', 'U', 'N', 0),
+  northEast('Timur Laut', 'Northeast', 'TL', 'NE', 45),
+  east('Timur', 'East', 'T', 'E', 90),
+  southEast('Tenggara', 'Southeast', 'TG', 'SE', 135),
+  south('Selatan', 'South', 'S', 'S', 180),
+  southWest('Barat Daya', 'Southwest', 'BD', 'SW', 225),
+  west('Barat', 'West', 'B', 'W', 270),
+  northWest('Barat Laut', 'Northwest', 'BL', 'NW', 315);
+
+  final String labelId;
+  final String labelEn;
+  final String abbrId;
+  final String abbrEn;
+  final double angleDegrees;
+
+  const CompassDirection(
+    this.labelId,
+    this.labelEn,
+    this.abbrId,
+    this.abbrEn,
+    this.angleDegrees,
+  );
+
+  String localizedLabel(bool isEnglish) => isEnglish ? labelEn : labelId;
+  String localizedAbbr(bool isEnglish) => isEnglish ? abbrEn : abbrId;
+
+  /// Konversi sudut bearing (0 - 360 derajat) ke 8 arah mata angin
+  static CompassDirection fromBearing(double bearing) {
+    final normalized = (bearing % 360.0 + 360.0) % 360.0;
+    if (normalized >= 337.5 || normalized < 22.5) {
+      return CompassDirection.north;
+    } else if (normalized < 67.5) {
+      return CompassDirection.northEast;
+    } else if (normalized < 112.5) {
+      return CompassDirection.east;
+    } else if (normalized < 157.5) {
+      return CompassDirection.southEast;
+    } else if (normalized < 202.5) {
+      return CompassDirection.south;
+    } else if (normalized < 247.5) {
+      return CompassDirection.southWest;
+    } else if (normalized < 292.5) {
+      return CompassDirection.west;
+    } else {
+      return CompassDirection.northWest;
+    }
+  }
+}
+
+/// Menghitung sudut bearing (0 - 360 derajat) dari titik asal ke titik tujuan
+double calculateBearing(LatLng from, LatLng to) {
+  final double lat1 = from.latitude * (math.pi / 180.0);
+  final double lon1 = from.longitude * (math.pi / 180.0);
+  final double lat2 = to.latitude * (math.pi / 180.0);
+  final double lon2 = to.longitude * (math.pi / 180.0);
+
+  final double dLon = lon2 - lon1;
+  final double y = math.sin(dLon) * math.cos(lat2);
+  final double x = math.cos(lat1) * math.sin(lat2) -
+      math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+
+  final double radians = math.atan2(y, x);
+  final double degrees = radians * (180.0 / math.pi);
+  return (degrees + 360.0) % 360.0;
+}
+
+/// Informasi Rute Perjalanan Garis Lurus (Bearing & Distance)
+class RouteInfo {
+  final LatLng origin;
+  final MapPlace destination;
+  final double distanceMeters;
+  final double bearingDegrees;
+  final CompassDirection direction;
+
+  RouteInfo({
+    required this.origin,
+    required this.destination,
+    required this.distanceMeters,
+    required this.bearingDegrees,
+    required this.direction,
+  });
+
+  /// Factory untuk membuat RouteInfo secara otomatis dari titik awal dan destinasi
+  factory RouteInfo.fromLocations({
+    required LatLng origin,
+    required MapPlace destination,
+  }) {
+    final distance = destination.distanceTo(origin);
+    final bearing = calculateBearing(origin, destination.coordinates);
+    final dir = CompassDirection.fromBearing(bearing);
+    return RouteInfo(
+      origin: origin,
+      destination: destination,
+      distanceMeters: distance,
+      bearingDegrees: bearing,
+      direction: dir,
+    );
+  }
+
+  /// Teks format jarak (misal: "850 m" atau "2.4 km")
+  String formattedDistance() {
+    if (distanceMeters < 1000) {
+      return '${distanceMeters.round()} m';
+    }
+    final double km = distanceMeters / 1000;
+    return '${km.toStringAsFixed(1)} km';
+  }
+
+  /// Estimasi waktu berjalan kaki (asumsi kecepatan ~80 meter/menit)
+  int get estimatedWalkingMinutes => (distanceMeters / 80).ceil().clamp(1, 999);
+
+  /// Estimasi waktu berkendara (asumsi kecepatan rata-rata kota ~400 meter/menit)
+  int get estimatedDrivingMinutes =>
+      (distanceMeters / 400).ceil().clamp(1, 999);
 }
 
 class MapPlace {
@@ -116,6 +241,14 @@ class MapPlace {
     final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
     return earthRadius * c;
   }
+
+  /// Menghitung sudut bearing dari posisi pengguna ke tempat ini
+  double bearingFrom(LatLng userLocation) =>
+      calculateBearing(userLocation, coordinates);
+
+  /// Menghitung arah mata angin dari posisi pengguna ke tempat ini
+  CompassDirection directionFrom(LatLng userLocation) =>
+      CompassDirection.fromBearing(bearingFrom(userLocation));
 
   /// Menampilkan teks jarak yang rapi (misal: "450 m" atau "2.4 km")
   String formattedDistanceTo(LatLng target) {

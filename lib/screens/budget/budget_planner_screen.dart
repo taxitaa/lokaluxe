@@ -39,7 +39,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   };
 
   double _selectedBudget = 0;
-  String? _inputCurrency;
+  String _conversionCurrency = 'IDR';
   double _spent = 0;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -181,7 +181,7 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
   }
 
   String _effectiveInputCurrency(CurrencyProvider currencyProvider) =>
-      _inputCurrency ?? currencyProvider.selectedCurrency;
+      currencyProvider.selectedCurrency;
 
   String _formatInputAmount(double amount, String currency) =>
       switch (currency) {
@@ -211,29 +211,28 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
     return '${_tr("Perkiraan setara", "Approx. equivalent")}: $formatted';
   }
 
-  void _changeInputCurrency(String currency, CurrencyProvider provider) {
-    final currentAmount = _customController.text.trim().isEmpty
-        ? null
-        : double.tryParse(_customController.text.trim());
-    final amountIDR = currentAmount == null
-        ? _selectedBudget
-        : provider.convertBetween(
-            amount: currentAmount,
-            sourceCurrency: _effectiveInputCurrency(provider),
-            targetCurrency: 'IDR',
-          );
-    setState(() {
-      _inputCurrency = currency;
-      _selectedBudget = amountIDR;
-      _customController.text = _formatInputAmount(
-        provider.convertBetween(
-          amount: amountIDR,
-          sourceCurrency: 'IDR',
-          targetCurrency: currency,
+  Widget _buildBudgetLimitCard({
+    required Widget leading,
+    required Widget child,
+  }) {
+    return Material(
+      color: AppColors.primaryGreen,
+      borderRadius: BorderRadius.circular(24),
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.16),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 128),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            leading,
+            const SizedBox(width: 12),
+            Expanded(child: child),
+          ],
         ),
-        currency,
-      );
-    });
+      ),
+    );
   }
 
   Future<String?> _anchorPlannerHash(String hash) async {
@@ -500,37 +499,25 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  strings.budgetLimit,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+            Text(
+              strings.budgetLimit,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: 12),
 
-            // Kartu Utama Total Budget
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primaryGreen,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+            _buildBudgetLimitCard(
+              leading: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Colors.white,
+                size: 24,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     strings.estimatedSpend,
@@ -539,14 +526,107 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 5),
                   Text(
                     _selectedBudget > 0
                         ? currencyProvider.convertAndFormat(_selectedBudget)
                         : _tr('Belum ditentukan', 'Not set'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(
                       color: Colors.white,
-                      fontSize: 28,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildBudgetLimitCard(
+              leading: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Colors.white,
+                size: 24,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _conversionCurrency,
+                      isExpanded: true,
+                      isDense: true,
+                      dropdownColor: AppColors.primaryGreenDark,
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.accentGold,
+                      ),
+                      selectedItemBuilder: (context) => CurrencyService
+                          .currencySymbols
+                          .keys
+                          .map(
+                            (currency) => Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '${CurrencyService.currencyFlags[currency]} $currency (${CurrencyService.currencySymbols[currency]})',
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      items: CurrencyService.currencySymbols.keys
+                          .map(
+                            (currency) => DropdownMenuItem(
+                              value: currency,
+                              child: Text(
+                                '${CurrencyService.currencyFlags[currency]} $currency – ${CurrencyService.currencyNames[currency]} (${CurrencyService.currencySymbols[currency]})',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (currency) {
+                        if (currency != null) {
+                          setState(() => _conversionCurrency = currency);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    strings.estimatedSpend,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _selectedBudget > 0
+                        ? CurrencyService.formatAmount(
+                            currencyProvider.convertBetween(
+                              amount: _selectedBudget,
+                              sourceCurrency: 'IDR',
+                              targetCurrency: _conversionCurrency,
+                            ),
+                            _conversionCurrency,
+                          )
+                        : '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -569,34 +649,12 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               },
               decoration: InputDecoration(
                 labelText: _tr('Masukkan budget trip', 'Enter trip budget'),
+                prefixIcon: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: AppColors.accentGold,
+                ),
                 prefixText:
                     '${CurrencyService.currencySymbols[_effectiveInputCurrency(currencyProvider)] ?? ''} ',
-                suffixIcon: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _effectiveInputCurrency(currencyProvider),
-                      items: CurrencyService.currencySymbols.keys
-                          .map(
-                            (currency) => DropdownMenuItem(
-                              value: currency,
-                              child: Text(currency),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _isSaving
-                          ? null
-                          : (currency) {
-                              if (currency != null) {
-                                _changeInputCurrency(
-                                  currency,
-                                  currencyProvider,
-                                );
-                              }
-                            },
-                    ),
-                  ),
-                ),
                 filled: true,
                 fillColor: AppColors.pureWhite,
                 border: OutlineInputBorder(
@@ -628,37 +686,57 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _tr('SISA BUDGET', 'BUDGET REMAINING'),
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isLoading
-                        ? _tr('Memuat...', 'Loading...')
-                        : currencyProvider.convertAndFormat(
-                            (_selectedBudget - _spent).clamp(
-                              0,
-                              double.infinity,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4, right: 14),
+                        child: Icon(
+                          Icons.monetization_on_outlined,
+                          size: 32,
+                          color: AppColors.accentGold,
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _tr('SISA BUDGET', 'BUDGET REMAINING'),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
-                          ),
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${_tr("Terpakai", "Spent")}: ${currencyProvider.convertAndFormat(_spent)}',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _isLoading
+                                  ? _tr('Memuat...', 'Loading...')
+                                  : currencyProvider.convertAndFormat(
+                                      (_selectedBudget - _spent).clamp(
+                                        0,
+                                        double.infinity,
+                                      ),
+                                    ),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primaryGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_tr("Terpakai", "Spent")}: ${currencyProvider.convertAndFormat(_spent)}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lokaluxe/core/models/map_place_model.dart';
 import 'package:lokaluxe/core/services/currency_provider.dart';
+import 'package:lokaluxe/core/services/localization_provider.dart';
 import 'package:lokaluxe/core/services/map_places_service.dart';
 import 'package:lokaluxe/screens/map/navigator_screen.dart';
 import 'package:lokaluxe/screens/map/qibla_compass_screen.dart';
@@ -10,6 +15,12 @@ import 'package:provider/provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  http.Response httpResponse(Object body) => http.Response(
+    jsonEncode(body),
+    200,
+    headers: const {'content-type': 'application/json'},
+  );
 
   group('MapPlace Model & MapPlacesService Tests', () {
     test('Calculates the Qibla bearing from Jakarta', () {
@@ -45,30 +56,128 @@ void main() {
       expect(dist, lessThan(1200));
     });
 
+    test('Parses nearby node, way and relation results by category', () async {
+      final location = const LatLng(-6.2, 106.8);
+      String? sentQuery;
+      final places = await MapPlacesService.searchNearbyPlaces(
+        userLocation: location,
+        radiusMeters: 5000,
+        forceRefresh: true,
+        client: MockClient((request) async {
+          sentQuery = Uri.splitQueryString(request.body)['data'];
+          return httpResponse({
+            'elements': [
+              {
+                'type': 'node',
+                'id': 100,
+                'lat': -6.201,
+                'lon': 106.8,
+                'tags': {'name': 'Nearby Cafe', 'amenity': 'cafe'},
+              },
+              {
+                'type': 'way',
+                'id': 200,
+                'center': {'lat': -6.202, 'lon': 106.8},
+                'tags': {'name': 'Nearby Hotel', 'tourism': 'hotel'},
+              },
+              {
+                'type': 'relation',
+                'id': 300,
+                'center': {'lat': -6.203, 'lon': 106.8},
+                'tags': {'name': 'Nearby Park', 'leisure': 'park'},
+              },
+              {
+                'type': 'way',
+                'id': 400,
+                'center': {'lat': -6.204, 'lon': 106.8},
+                'tags': {'name': 'Nearby Museum', 'tourism': 'museum'},
+              },
+              {
+                'type': 'node',
+                'id': 101,
+                'lat': -6.201,
+                'lon': 106.8,
+                'tags': {'name': 'Nearby Cafe', 'amenity': 'cafe'},
+              },
+            ],
+          });
+        }),
+      );
+
+      expect(sentQuery, contains('around:5000,-6.200000,106.800000'));
+      expect(places, hasLength(4));
+      expect(
+        places.map((place) => place.category),
+        containsAll([
+          PlaceCategory.restaurants,
+          PlaceCategory.hotel,
+          PlaceCategory.park,
+          PlaceCategory.amusement,
+        ]),
+      );
+      expect(
+        places.map((place) => place.distanceTo(location)).toList(),
+        orderedEquals(
+          places.map((place) => place.distanceTo(location)).toList()..sort(),
+        ),
+      );
+    });
+
     test(
-      'Loads curated places and generates surrounding places for any location',
+      'Returns an empty list for a successful empty Overpass response',
       () async {
-        final userLoc = const LatLng(-6.2000, 106.8166);
-        final places = await MapPlacesService.getPlaces(userLocation: userLoc);
-
-        expect(places.isNotEmpty, isTrue);
-
-        // Verify category coverage exists
-        final hasRestaurant = places.any(
-          (p) => p.category == PlaceCategory.restaurants,
+        final places = await MapPlacesService.searchNearbyPlaces(
+          userLocation: const LatLng(1.2345, 2.3456),
+          radiusMeters: 5000,
+          forceRefresh: true,
+          client: MockClient((_) async => httpResponse({'elements': []})),
         );
-        final hasHotel = places.any((p) => p.category == PlaceCategory.hotel);
-        final hasAmusement = places.any(
-          (p) => p.category == PlaceCategory.amusement,
-        );
-        final hasPark = places.any((p) => p.category == PlaceCategory.park);
-        final hasPool = places.any((p) => p.category == PlaceCategory.pool);
 
-        expect(hasRestaurant, isTrue);
-        expect(hasHotel, isTrue);
-        expect(hasAmusement, isTrue);
-        expect(hasPark, isTrue);
-        expect(hasPool, isTrue);
+        expect(places, isEmpty);
+      },
+    );
+
+    test('Requests only tags for the selected category', () async {
+      String? sentQuery;
+      await MapPlacesService.searchNearbyPlaces(
+        userLocation: const LatLng(7.1234, 110.1234),
+        radiusMeters: 5000,
+        category: PlaceCategory.amusement,
+        forceRefresh: true,
+        client: MockClient((request) async {
+          sentQuery = Uri.splitQueryString(request.body)['data'];
+          return httpResponse({'elements': []});
+        }),
+      );
+
+      expect(sentQuery, contains('"tourism"~"^(attraction'));
+      expect(sentQuery, isNot(contains('"amenity"~"restaurant')));
+    });
+
+    test(
+      'Reports rate limiting after trying both Overpass endpoints',
+      () async {
+        final requestedHosts = <String>[];
+        await expectLater(
+          MapPlacesService.searchNearbyPlaces(
+            userLocation: const LatLng(3.4567, 4.5678),
+            radiusMeters: 5000,
+            forceRefresh: true,
+            client: MockClient((request) async {
+              requestedHosts.add(request.url.host);
+              return http.Response('rate limited', 429);
+            }),
+          ),
+          throwsA(
+            isA<MapPlacesSearchException>().having(
+              (error) => error.kind,
+              'kind',
+              MapPlacesFailureKind.rateLimited,
+            ),
+          ),
+        );
+
+        expect(requestedHosts.toSet(), hasLength(2));
       },
     );
 
@@ -114,12 +223,16 @@ void main() {
       WidgetTester tester,
     ) async {
       final currencyProvider = CurrencyProvider();
+      final localizationProvider = LocalizationProvider();
 
       await tester.pumpWidget(
         MultiProvider(
           providers: [
             ChangeNotifierProvider<CurrencyProvider>.value(
               value: currencyProvider,
+            ),
+            ChangeNotifierProvider<LocalizationProvider>.value(
+              value: localizationProvider,
             ),
           ],
           child: const MaterialApp(
@@ -132,12 +245,9 @@ void main() {
       expect(find.text('LokaLuxe Navigator'), findsOneWidget);
 
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.text('Menjelajahi Jakarta'), findsOneWidget);
-      expect(find.text('Tempat di sekitar Jakarta'), findsOneWidget);
-      expect(find.text('Jelajahi sekitar'), findsNothing);
-      expect(find.text('Lokasi kamu'), findsNothing);
-      expect(find.text('Ketuk untuk mendeteksi lokasi'), findsNothing);
-      expect(find.text('Akses Lokasi Diperlukan'), findsNothing);
+      expect(find.text('Mendeteksi lokasi perangkat'), findsOneWidget);
+      expect(find.text('Menjelajahi Jakarta'), findsNothing);
+      expect(find.text('Tempat di sekitar Jakarta'), findsNothing);
 
       // Verify the horizontal category chips
       expect(find.text('Semua'), findsOneWidget);

@@ -17,7 +17,7 @@ class CurrencyRate {
 }
 
 /// Service untuk mengambil, meng-cache, dan mengkonversi mata uang
-/// Mendukung IDR -> USD, EUR, JPY dengan fallback offline
+/// yang didukung aplikasi dengan fallback offline.
 class CurrencyService {
   // Key untuk SharedPreferences (cache offline)
   static const String _cacheKey = 'currency_rates_cache';
@@ -31,6 +31,10 @@ class CurrencyService {
     'USD': 0.000062, // 1 IDR ≈ 0.000062 USD
     'EUR': 0.000057, // 1 IDR ≈ 0.000057 EUR
     'JPY': 0.0094,   // 1 IDR ≈ 0.0094 JPY
+    'SGD': 0.000081, // 1 IDR ≈ 0.000081 SGD
+    'MYR': 0.00029, // 1 IDR ≈ 0.00029 MYR
+    'KRW': 0.088, // 1 IDR ≈ 0.088 KRW
+    'GBP': 0.000048, // 1 IDR ≈ 0.000048 GBP
   };
 
   // Simbol & nama lengkap mata uang yang didukung
@@ -39,6 +43,10 @@ class CurrencyService {
     'USD': '\$',
     'EUR': '€',
     'JPY': '¥',
+    'SGD': 'S\$',
+    'MYR': 'RM',
+    'KRW': '₩',
+    'GBP': '£',
   };
 
   static const Map<String, String> currencyNames = {
@@ -46,6 +54,10 @@ class CurrencyService {
     'USD': 'US Dollar',
     'EUR': 'Euro',
     'JPY': 'Japanese Yen',
+    'SGD': 'Singapore Dollar',
+    'MYR': 'Malaysian Ringgit',
+    'KRW': 'South Korean Won',
+    'GBP': 'British Pound',
   };
 
   static const Map<String, String> currencyFlags = {
@@ -53,6 +65,10 @@ class CurrencyService {
     'USD': '🇺🇸',
     'EUR': '🇪🇺',
     'JPY': '🇯🇵',
+    'SGD': '🇸🇬',
+    'MYR': '🇲🇾',
+    'KRW': '🇰🇷',
+    'GBP': '🇬🇧',
   };
 
   // Cache in-memory agar tidak perlu membaca disk berulang kali
@@ -125,11 +141,9 @@ class CurrencyService {
 
     final rates = data['rates'] as Map<String, dynamic>;
 
-    // Ekstrak hanya mata uang yang didukung
     return {
-      'USD': (rates['USD'] as num).toDouble(),
-      'EUR': (rates['EUR'] as num).toDouble(),
-      'JPY': (rates['JPY'] as num).toDouble(),
+      for (final currency in _fallbackRates.keys)
+        currency: (rates[currency] as num).toDouble(),
     };
   }
 
@@ -217,7 +231,8 @@ class CurrencyService {
         // Format Rupiah tanpa desimal, dengan pemisah titik ribuan
         return '$symbol ${_formatThousands(amount.round())}';
       case 'JPY':
-        // Yen tidak memiliki sen, bulatkan ke bilangan bulat
+      case 'KRW':
+        // JPY and KRW do not use fractional units for displayed amounts.
         return '$symbol ${_formatThousands(amount.round())}';
       case 'USD':
       case 'EUR':

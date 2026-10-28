@@ -1,14 +1,16 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map/flutter_map.dart' as flutter_map;
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/models/map_place_model.dart';
-import '../../core/models/location_model.dart';
 import '../../core/services/currency_provider.dart';
 import '../../core/services/localization_provider.dart';
-import '../../core/services/location_provider.dart';
 import '../../core/services/map_places_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'qibla_compass_screen.dart';
@@ -30,13 +32,17 @@ class NavigatorScreen extends StatefulWidget {
 }
 
 class _NavigatorScreenState extends State<NavigatorScreen> {
+  static const _initialZoom = 13.5;
+  static const _initialSearchRadius = 5000;
+  static const _maximumSearchRadius = 25000;
+
   String _tr(String indonesian, String english) => context
       .read<LocalizationProvider>()
       .strings
       .localized(indonesian, english);
 
   // Map Controller
-  final MapController _mapController = MapController();
+  final flutter_map.MapController _mapController = flutter_map.MapController();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _mapSectionKey = GlobalKey();
 
@@ -46,104 +52,314 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   String _searchQuery = '';
   MapPlace? _selectedPlace;
   bool _isMapReady = false;
+  bool _isRequestingLocation = false;
+  bool _locationServiceDisabled = false;
+  bool _permissionPermanentlyDenied = false;
+  bool _isLoadingPlaces = true;
+  String? _locationError;
+  String? _placesError;
   bool get _isSearching => _searchQuery.isNotEmpty;
 
-  LatLng _userLocation = const LatLng(-6.1953, 106.8231);
-  String? _activeLocationId;
+  LatLng? _userLocation;
+  late LatLng _mapCenter;
+  int _searchRadiusMeters = _initialSearchRadius;
+  StreamSubscription<Position>? _positionSubscription;
+  DateTime? _lastPlacesRequestAt;
+  int _placesRequestGeneration = 0;
 
   // Data State
   List<MapPlace> _allPlaces = [];
-  bool _isLoadingPlaces = true;
-  static const String _openStreetMapUrl =
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
   @override
   void initState() {
     super.initState();
     if (widget.initialCategory != null) {
       _selectedCategory = widget.initialCategory!;
     }
-    if (widget.initialTarget != null) {
-      _userLocation = widget.initialTarget!;
-    }
+    _mapCenter = widget.initialTarget ?? const LatLng(0, 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startLocationUpdates();
+    });
   }
 
   @override
   void dispose() {
+    _positionSubscription?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    final selectedLocation = context
-        .watch<LocationProvider?>()
-        ?.currentLocation;
-    final locationId = selectedLocation?.id ?? 'id-jakarta';
-    if (_activeLocationId == locationId) return;
-
-    _activeLocationId = locationId;
-    if (widget.initialTarget == null) {
-      _userLocation = _coordinatesFor(selectedLocation);
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _centerMapOn(_userLocation, zoom: 13.5);
-      _loadPlaces();
-    });
-  }
-
-  static const LatLng _jakartaCenter = LatLng(-6.1953, 106.8231);
-
-  LatLng _coordinatesFor(LocationModel? location) {
-    if (location == null || !location.isIndonesia) return _jakartaCenter;
-
-    return switch (location.id) {
-      'id-bali' => const LatLng(-8.4095, 115.1889),
-      'id-surabaya' => const LatLng(-7.2575, 112.7521),
-      'id-medan' => const LatLng(3.5952, 98.6722),
-      'id-makassar' => const LatLng(-5.1477, 119.4327),
-      'id-jayapura' => const LatLng(-2.5337, 140.7181),
-      _ => _jakartaCenter,
-    };
-  }
-
-  String _mapAreaName(LocationModel? location) {
-    if (location == null || !location.isIndonesia) return 'Jakarta';
-    return location.city;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
   // DATA LOADING & FILTERING
   // ──────────────────────────────────────────────────────────────────────────
 
-  Future<void> _loadPlaces() async {
-    setState(() => _isLoadingPlaces = true);
+  Future<void> _startLocationUpdates({bool requestPermission = true}) async {
+    if (_isRequestingLocation) return;
+    setState(() {
+      _isRequestingLocation = true;
+      _locationError = null;
+    });
+
     try {
-      final places = await MapPlacesService.getPlaces(
-        userLocation: _userLocation,
-      );
-      if (mounted) {
+      if (!await Geolocator.isLocationServiceEnabled()) {
         setState(() {
-          _allPlaces = places;
-          _isLoadingPlaces = false;
+          _locationServiceDisabled = true;
+          _locationError = _tr(
+            'Aktifkan layanan lokasi untuk mencari tempat di sekitar Anda.',
+            'Turn on location services to find places near you.',
+          );
         });
+        return;
       }
-    } catch (e) {
-      debugPrint('[NavigatorScreen] Error loadPlaces: $e');
-      if (mounted) setState(() => _isLoadingPlaces = false);
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied && requestPermission) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _permissionPermanentlyDenied = true;
+          _locationError = _tr(
+            'Izin lokasi ditolak permanen. Aktifkan izin lokasi melalui pengaturan aplikasi.',
+            'Location permission is permanently denied. Enable it in app settings.',
+          );
+        });
+        return;
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        setState(() {
+          _locationError = _tr(
+            'Izin lokasi diperlukan untuk menampilkan tempat terdekat.',
+            'Location permission is required to show nearby places.',
+          );
+        });
+        return;
+      }
+
+      final currentPosition = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+      _updateDeviceLocation(currentPosition, forceSearch: true);
+
+      await _positionSubscription?.cancel();
+      final LocationSettings locationSettings = switch (defaultTargetPlatform) {
+        TargetPlatform.android => AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 25,
+          intervalDuration: const Duration(seconds: 15),
+        ),
+        TargetPlatform.iOS || TargetPlatform.macOS => AppleSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 25,
+          pauseLocationUpdatesAutomatically: false,
+        ),
+        _ => const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 25,
+        ),
+      };
+      _positionSubscription =
+          Geolocator.getPositionStream(locationSettings: locationSettings)
+              .listen(
+                _updateDeviceLocation,
+                onError: (Object error) {
+                  debugPrint('[NavigatorScreen] Location stream error: $error');
+                  if (mounted && _userLocation == null) {
+                    setState(() {
+                      _locationError = _tr(
+                        'Lokasi perangkat tidak dapat diperbarui. Coba lagi.',
+                        'Device location could not be updated. Try again.',
+                      );
+                    });
+                  }
+                },
+              );
+    } on LocationServiceDisabledException {
+      if (!mounted) return;
+      setState(() {
+        _locationServiceDisabled = true;
+        _locationError = _tr(
+          'Layanan lokasi perangkat sedang mati.',
+          'Device location services are turned off.',
+        );
+      });
+    } on PermissionDeniedException {
+      if (!mounted) return;
+      setState(() {
+        _locationError = _tr(
+          'Akses lokasi ditolak. Izinkan aplikasi mengakses lokasi.',
+          'Location access was denied. Allow the app to access your location.',
+        );
+      });
+    } catch (error) {
+      debugPrint('[NavigatorScreen] Could not obtain device location: $error');
+      if (!mounted) return;
+      setState(() {
+        _locationError = _tr(
+          'Lokasi tidak dapat diperoleh. Periksa GPS dan coba lagi.',
+          'Could not get your location. Check GPS and try again.',
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _isRequestingLocation = false);
     }
   }
 
-  List<MapPlace> get _filteredPlaces {
-    return _allPlaces.where((place) {
-      if (!_isSearching && place.distanceTo(_userLocation) > 50000) {
-        return false;
+  void _updateDeviceLocation(Position position, {bool forceSearch = false}) {
+    if (!mounted) return;
+    final nextLocation = LatLng(position.latitude, position.longitude);
+    final previousLocation = _userLocation;
+    final shouldRefreshPlaces =
+        forceSearch ||
+        previousLocation == null ||
+        const Distance().as(LengthUnit.Meter, previousLocation, nextLocation) >=
+            250;
+
+    setState(() {
+      _userLocation = nextLocation;
+      _mapCenter = nextLocation;
+      _locationError = null;
+      _locationServiceDisabled = false;
+      _permissionPermanentlyDenied = false;
+      if (_selectedPlace != null &&
+          _selectedPlace!.distanceTo(nextLocation) > _searchRadiusMeters) {
+        _selectedPlace = null;
       }
+    });
+
+    if (_isMapReady && previousLocation == null) {
+      _centerMapOn(nextLocation, zoom: _initialZoom);
+    }
+    if (shouldRefreshPlaces) _loadPlaces();
+  }
+
+  Future<void> _openLocationSettings() async {
+    final opened = _permissionPermanentlyDenied
+        ? await Geolocator.openAppSettings()
+        : await Geolocator.openLocationSettings();
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'Pengaturan lokasi tidak dapat dibuka.',
+              'Could not open location settings.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadPlaces({
+    bool forceRefresh = false,
+    bool bypassThrottle = false,
+  }) async {
+    final location = _userLocation;
+    if (location == null) return;
+    final now = DateTime.now();
+    final lastRequest = _lastPlacesRequestAt;
+    if (!forceRefresh &&
+        !bypassThrottle &&
+        lastRequest != null &&
+        now.difference(lastRequest) < const Duration(seconds: 4)) {
+      return;
+    }
+
+    _lastPlacesRequestAt = now;
+    final requestGeneration = ++_placesRequestGeneration;
+    setState(() {
+      _isLoadingPlaces = true;
+      _placesError = null;
+    });
+    try {
+      final places = await MapPlacesService.searchNearbyPlaces(
+        userLocation: location,
+        radiusMeters: _searchRadiusMeters,
+        category: _selectedCategory,
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted || requestGeneration != _placesRequestGeneration) return;
+      if (_userLocation != location) {
+        _lastPlacesRequestAt = null;
+        _loadPlaces(forceRefresh: true);
+        return;
+      }
+      setState(() {
+        _allPlaces = places;
+        _isLoadingPlaces = false;
+      });
+    } catch (error) {
+      debugPrint('[NavigatorScreen] Nearby place search failed: $error');
+      if (!mounted || requestGeneration != _placesRequestGeneration) return;
+      if (_userLocation != location) {
+        _lastPlacesRequestAt = null;
+        _loadPlaces(forceRefresh: true);
+        return;
+      }
+      setState(() {
+        _placesError = _placesFailureMessage(error);
+        _allPlaces = [];
+        _isLoadingPlaces = false;
+      });
+    }
+  }
+
+  String _placesFailureMessage(Object error) {
+    if (error is! MapPlacesSearchException) {
+      return _tr(
+        'Pencarian tempat gagal. Silakan coba lagi.',
+        'Place search failed. Please try again.',
+      );
+    }
+
+    return switch (error.kind) {
+      MapPlacesFailureKind.network => _tr(
+        'Tidak dapat terhubung ke layanan pencarian tempat. Periksa koneksi internet Anda.',
+        'Could not connect to the place search service. Check your internet connection.',
+      ),
+      MapPlacesFailureKind.timeout => _tr(
+        'Layanan pencarian tempat terlalu lama merespons. Coba lagi sebentar.',
+        'The nearby places service timed out. Please try again shortly.',
+      ),
+      MapPlacesFailureKind.rateLimited => _tr(
+        'Layanan peta sedang membatasi permintaan. Tunggu sebentar lalu coba lagi.',
+        'The map service is rate limiting requests. Wait briefly and retry.',
+      ),
+      MapPlacesFailureKind.invalidRequest => _tr(
+        'Permintaan pencarian tempat tidak valid.',
+        'The place search request is invalid.',
+      ),
+      MapPlacesFailureKind.invalidResponse => _tr(
+        'Layanan pencarian tempat mengirim respons yang tidak dapat dibaca.',
+        'The nearby places service returned an unreadable response.',
+      ),
+      MapPlacesFailureKind.server => _tr(
+        'Server pencarian tempat sedang sibuk atau mengalami gangguan (HTTP ${error.statusCode ?? "?"}). Coba lagi nanti.',
+        'The nearby places server is busy or unavailable (HTTP ${error.statusCode ?? "?"}). Try again later.',
+      ),
+    };
+  }
+
+  void _expandSearchRadius() {
+    if (_searchRadiusMeters < 10000) {
+      _searchRadiusMeters = 10000;
+    } else {
+      _searchRadiusMeters = _maximumSearchRadius;
+    }
+    _loadPlaces(forceRefresh: true);
+  }
+
+  List<MapPlace> get _filteredPlaces {
+    final userLocation = _userLocation;
+    if (userLocation == null) return [];
+
+    return _allPlaces.where((place) {
+      if (place.distanceTo(userLocation) > _searchRadiusMeters) return false;
 
       // 1. Filter kategori
       if (_selectedCategory != PlaceCategory.all &&
@@ -176,7 +392,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         final bStartsWith = b.name.toLowerCase().startsWith(query);
         if (aStartsWith != bStartsWith) return aStartsWith ? -1 : 1;
       }
-      return a.distanceTo(_userLocation).compareTo(b.distanceTo(_userLocation));
+      return a.distanceTo(userLocation).compareTo(b.distanceTo(userLocation));
     });
   }
 
@@ -185,9 +401,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   // ──────────────────────────────────────────────────────────────────────────
 
   void _centerMapOn(LatLng target, {double zoom = 15.0}) {
-    if (_isMapReady) {
-      _mapController.move(target, zoom);
-    }
+    if (_isMapReady) _mapController.move(target, zoom);
   }
 
   void _onMarkerTap(MapPlace place) {
@@ -208,6 +422,15 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
     }
   }
 
+  String _distanceLabel(MapPlace place) {
+    final location = _userLocation;
+    if (location == null) {
+      return _tr('Jarak tidak tersedia', 'Distance unavailable');
+    }
+    final distance = place.formattedDistanceTo(location);
+    return _tr('$distance dari lokasi Anda', '$distance from your location');
+  }
+
   void _openQiblaCompass() {
     Navigator.of(
       context,
@@ -215,20 +438,30 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   }
 
   void _zoomIn() {
-    final currentZoom = _mapController.camera.zoom;
-    _mapController.move(_mapController.camera.center, currentZoom + 1);
+    if (_isMapReady) {
+      _mapController.move(
+        _mapController.camera.center,
+        (_mapController.camera.zoom + 1).clamp(2, 20).toDouble(),
+      );
+    }
   }
 
   void _zoomOut() {
-    final currentZoom = _mapController.camera.zoom;
-    _mapController.move(_mapController.camera.center, currentZoom - 1);
+    if (_isMapReady) {
+      _mapController.move(
+        _mapController.camera.center,
+        (_mapController.camera.zoom - 1).clamp(2, 20).toDouble(),
+      );
+    }
   }
 
-  /// Membuka tempat langsung di aplikasi Google Maps fisik
+  /// Opens a place link in the installed map application or browser.
   Future<void> _openPlaceInGoogleMaps(MapPlace place) async {
     final success = await MapPlacesService.openInGoogleMaps(
       place.latitude,
       place.longitude,
+      placeId: place.id,
+      googleMapsUri: place.googleMapsUri,
     );
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -243,6 +476,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         ),
       );
     }
+
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -252,9 +486,6 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   @override
   Widget build(BuildContext context) {
     final strings = context.watch<LocalizationProvider>().strings;
-    final selectedLocation = context
-        .watch<LocationProvider?>()
-        ?.currentLocation;
     final filtered = _filteredPlaces;
 
     return Scaffold(
@@ -305,8 +536,12 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                           const SizedBox(height: 2),
                           Text(
                             _tr(
-                              'Menjelajahi ${_mapAreaName(selectedLocation)}',
-                              'Exploring ${_mapAreaName(selectedLocation)}',
+                              _userLocation == null
+                                  ? 'Mendeteksi lokasi perangkat'
+                                  : 'Lokasi saya',
+                              _userLocation == null
+                                  ? 'Detecting device location'
+                                  : 'My location',
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -438,10 +673,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         _isSearching
                             ? _tr('Hasil pencarian', 'Search results')
                             : _selectedCategory == PlaceCategory.all
-                            ? _tr(
-                                'Tempat di sekitar ${_mapAreaName(selectedLocation)}',
-                                'Places near ${_mapAreaName(selectedLocation)}',
-                              )
+                            ? _tr('Tempat di sekitar Anda', 'Places near you')
                             : _getSectionTitle(),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 17,
@@ -450,16 +682,23 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         ),
                       ),
                     ),
-                    Text(
-                      '${filtered.length} ${_tr("lokasi", "places")}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
+                    if (_userLocation != null && _placesError == null)
+                      Text(
+                        _isLoadingPlaces
+                            ? _tr('Memuat...', 'Loading...')
+                            : '${filtered.length} ${_tr("lokasi", "places")}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
                     IconButton(
                       tooltip: _tr('Muat ulang tempat', 'Refresh places'),
-                      onPressed: _loadPlaces,
+                      onPressed: _userLocation != null && _isLoadingPlaces
+                          ? null
+                          : _userLocation == null
+                          ? _startLocationUpdates
+                          : () => _loadPlaces(forceRefresh: true),
                       icon: const Icon(
                         Icons.refresh_rounded,
                         color: AppColors.textSecondary,
@@ -469,7 +708,13 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                 ),
               ),
             ),
-            if (_isLoadingPlaces)
+            if (_userLocation == null)
+              SliverToBoxAdapter(child: _buildLocationStatusCard())
+            else if (_locationError != null)
+              SliverToBoxAdapter(child: _buildLocationStatusCard())
+            else if (_placesError != null)
+              SliverToBoxAdapter(child: _buildPlacesErrorCard())
+            else if (_isLoadingPlaces)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.all(32),
@@ -484,15 +729,31 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                  child: Text(
-                    _tr(
-                      'Tidak ada tempat ditemukan. Coba kategori atau kata kunci lain.',
-                      'No places found. Try another category or search term.',
-                    ),
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _tr(
+                          'Tidak ada tempat dalam radius ${_searchRadiusMeters ~/ 1000} km. Perluas radius pencarian atau pilih kategori lain.',
+                          'No places found within ${_searchRadiusMeters ~/ 1000} km. Expand the search radius or choose another category.',
+                        ),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (_searchRadiusMeters < _maximumSearchRadius)
+                        TextButton.icon(
+                          onPressed: _expandSearchRadius,
+                          icon: const Icon(Icons.radar_rounded),
+                          label: Text(
+                            _tr(
+                              'Perluas radius pencarian',
+                              'Expand search radius',
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               )
@@ -514,99 +775,220 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // MAP LAYER (FlutterMap + OSM / Carto Tiles + Markers)
+  // OPENSTREETMAP LAYER
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildMapLayer(List<MapPlace> places) {
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _userLocation,
-        initialZoom: 13.5,
-        minZoom: 3.0,
-        maxZoom: 19.0,
-        onMapReady: () {
-          setState(() => _isMapReady = true);
-          _centerMapOn(_userLocation, zoom: 13.5);
-        },
-        onTap: (_, _) {
-          if (_selectedPlace != null) {
-            setState(() => _selectedPlace = null);
-          }
-        },
-      ),
-      children: [
-        // OpenStreetMap tiles work without a private API key.
-        TileLayer(
-          urlTemplate: _openStreetMapUrl,
-          userAgentPackageName: 'com.example.lokaluxe',
-          maxZoom: 19,
+    final markers = <flutter_map.Marker>[
+      if (_userLocation case final userLocation?)
+        flutter_map.Marker(
+          point: userLocation,
+          width: 48,
+          height: 48,
+          child: Tooltip(
+            message: _tr('Lokasi Saya', 'My location'),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.pureWhite, width: 3),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 8),
+                ],
+              ),
+              child: const Icon(
+                Icons.my_location_rounded,
+                color: AppColors.pureWhite,
+                size: 23,
+              ),
+            ),
+          ),
         ),
+      ...places.map(
+        (place) => flutter_map.Marker(
+          point: place.coordinates,
+          width: 44,
+          height: 48,
+          child: GestureDetector(
+            onTap: () => _onMarkerTap(place),
+            child: Tooltip(
+              message: place.name,
+              child: Icon(
+                _getCategoryIcon(place.category),
+                color: _markerColor(place.category),
+                size: 38,
+                shadows: const [
+                  Shadow(color: Colors.black45, blurRadius: 4),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
 
-        // Destination markers around the selected city.
-        MarkerLayer(
-          markers: [
-            ...places.map((place) {
-              final isSelected = _selectedPlace?.id == place.id;
-              return Marker(
-                point: place.coordinates,
-                width: isSelected ? 56 : 46,
-                height: isSelected ? 56 : 46,
-                alignment: Alignment.topCenter,
-                child: GestureDetector(
-                  onTap: () => _onMarkerTap(place),
-                  child: _buildPlaceMarker(place, isSelected),
-                ),
+    return Stack(
+      children: [
+        flutter_map.FlutterMap(
+          mapController: _mapController,
+          options: flutter_map.MapOptions(
+            initialCenter: _mapCenter,
+            initialZoom: _userLocation == null ? 2 : _initialZoom,
+            minZoom: 2,
+            maxZoom: 20,
+            onMapReady: () {
+              if (mounted) setState(() => _isMapReady = true);
+              _centerMapOn(
+                _userLocation ?? _mapCenter,
+                zoom: _userLocation == null ? 2 : _initialZoom,
               );
-            }),
+            },
+            onTap: (_, _) {
+              if (_selectedPlace != null) {
+                setState(() => _selectedPlace = null);
+              }
+            },
+          ),
+          children: [
+            flutter_map.TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.lokaluxe',
+              maxZoom: 19,
+            ),
+            flutter_map.MarkerLayer(markers: markers),
           ],
+        ),
+        Positioned(
+          left: 8,
+          bottom: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.pureWhite.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: const Text(
+              '© OpenStreetMap contributors',
+              style: TextStyle(fontSize: 10, color: AppColors.textDark),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// Marker kustom per kategori dengan icon dan bayangan
-  Widget _buildPlaceMarker(MapPlace place, bool isSelected) {
-    final Color markerColor = _getCategoryColor(place.category);
-    final IconData icon = _getCategoryIcon(place.category);
-
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 250),
-      scale: isSelected ? 1.15 : 1.0,
-      child: Stack(
-        alignment: Alignment.topCenter,
-        children: [
-          // Pin Container
-          Container(
-            width: isSelected ? 48 : 40,
-            height: isSelected ? 48 : 40,
-            decoration: BoxDecoration(
-              color: markerColor,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? AppColors.accentGold : Colors.white,
-                width: isSelected ? 3.0 : 2.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isSelected
-                      ? markerColor.withValues(alpha: 0.5)
-                      : Colors.black.withValues(alpha: 0.25),
-                  blurRadius: isSelected ? 12 : 6,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: isSelected ? 24 : 20),
-          ),
-        ],
-      ),
-    );
+  Color _markerColor(PlaceCategory category) {
+    return switch (category) {
+      PlaceCategory.hotel => const Color(0xFF3B82F6),
+      PlaceCategory.restaurants => const Color(0xFFF97316),
+      PlaceCategory.park => AppColors.primaryGreen,
+      PlaceCategory.pool => const Color(0xFF06B6D4),
+      PlaceCategory.amusement => const Color(0xFF8B5CF6),
+      PlaceCategory.all => AppColors.accentGold,
+    };
   }
 
   // ──────────────────────────────────────────────────────────────────────────
   // RIGHT FLOATING MAP CONTROLS
   // ──────────────────────────────────────────────────────────────────────────
+
+  Future<void> _centerOnCurrentLocation() async {
+    await _startLocationUpdates();
+    final location = _userLocation;
+    if (location != null) _centerMapOn(location, zoom: _initialZoom);
+  }
+
+  Widget _buildLocationStatusCard() {
+    final message =
+        _locationError ??
+        _tr('Mendeteksi lokasi perangkat...', 'Detecting device location...');
+    final needsSettings =
+        _locationServiceDisabled || _permissionPermanentlyDenied;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.pureWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _locationServiceDisabled
+                  ? Icons.location_disabled_rounded
+                  : Icons.my_location_rounded,
+              color: AppColors.primaryGreen,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            if (_isRequestingLocation)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryGreen,
+                ),
+              )
+            else
+              TextButton(
+                onPressed: needsSettings
+                    ? _openLocationSettings
+                    : _startLocationUpdates,
+                child: Text(
+                  needsSettings
+                      ? _tr('Pengaturan', 'Settings')
+                      : _tr('Coba lagi', 'Retry'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlacesErrorCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.pureWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _placesError!,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => _loadPlaces(forceRefresh: true),
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(_tr('Coba lagi', 'Retry')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildRightFloatingControls() {
     return Positioned(
@@ -647,7 +1029,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => _centerMapOn(_userLocation, zoom: 13.5),
+                onTap: _centerOnCurrentLocation,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Icon(
@@ -749,7 +1131,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
   Widget _buildFloatingPreviewCard(MapPlace place) {
     final currency = context.watch<CurrencyProvider>();
-    final formattedDist = place.formattedDistanceTo(_userLocation);
+    final formattedDist = _distanceLabel(place);
 
     return Positioned(
       left: 16,
@@ -851,32 +1233,36 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         ),
                         const SizedBox(height: 4),
 
-                        // Rating Bintang & Jarak
+                        // OSM does not provide ratings consistently; show only verified values.
                         Row(
                           children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              size: 16,
-                              color: AppColors.starGold,
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              place.rating.toStringAsFixed(1),
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textDark,
+                            if (place.rating > 0) ...[
+                              const Icon(
+                                Icons.star_rounded,
+                                size: 16,
+                                color: AppColors.starGold,
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '(${place.reviewCount})',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
+                              const SizedBox(width: 3),
+                              Text(
+                                place.rating.toStringAsFixed(1),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textDark,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              if (place.reviewCount > 0) ...[
+                                const SizedBox(width: 4),
+                                Text(
+                                  '(${place.reviewCount})',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(width: 8),
+                            ],
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
@@ -910,16 +1296,18 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         const SizedBox(height: 6),
 
                         // Harga
-                        Text(
-                          place.price != null && place.price! > 0
-                              ? currency.convertAndFormat(place.price!)
-                              : (place.priceDisplay ?? _tr('Gratis', 'Free')),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryGreen,
+                        if ((place.price ?? 0) > 0 ||
+                            (place.priceDisplay?.isNotEmpty ?? false))
+                          Text(
+                            (place.price ?? 0) > 0
+                                ? currency.convertAndFormat(place.price!)
+                                : place.priceDisplay!,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryGreen,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -983,10 +1371,12 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
           return GestureDetector(
             onTap: () {
+              if (_selectedCategory == category) return;
               setState(() {
                 _selectedCategory = category;
                 _selectedPlace = null;
               });
+              _loadPlaces(bypassThrottle: true);
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -1052,7 +1442,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
   /// Ringkasan tempat yang bisa dipilih untuk memusatkan peta.
   Widget _buildPlaceListItemCard(MapPlace place) {
-    final formattedDist = place.formattedDistanceTo(_userLocation);
+    final formattedDist = _distanceLabel(place);
     final isSelected = _selectedPlace?.id == place.id;
 
     return Container(

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/database/db_helper.dart';
 import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/game_notification_service.dart';
@@ -14,7 +13,6 @@ import '../../core/services/preferences_service.dart';
 import '../../core/services/supabase_auth_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../auth/login_screen.dart';
-import '../../core/models/voucher_data.dart';
 import 'feedback_screen.dart';
 import 'security_screen.dart';
 
@@ -29,8 +27,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _feedbackController = TextEditingController();
   UserModel? _currentUser;
   Uint8List? _profilePhoto;
-  int? _completedTrips;
-  bool _statsLoadFailed = false;
   bool _isSubmittingFeedback = false;
 
   @override
@@ -62,28 +58,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _currentUser = user;
         _profilePhoto = photo;
       });
-      await _loadProfileStats();
     }
   }
 
   String _profilePhotoKey(UserModel user) =>
       user.id?.toString() ?? user.email.trim().toLowerCase();
-
-  Future<void> _loadProfileStats() async {
-    try {
-      final completedTrips = await DBHelper.getCompletedTripCount();
-      if (!mounted) return;
-      setState(() {
-        _completedTrips = completedTrips;
-        _statsLoadFailed = false;
-      });
-    } catch (error, stackTrace) {
-      debugPrint('[Profile] Gagal memuat statistik profil: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (!mounted) return;
-      setState(() => _statsLoadFailed = true);
-    }
-  }
 
   Future<void> _chooseProfilePhoto() async {
     final user = _currentUser;
@@ -375,25 +354,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
-              const SizedBox(height: 14),
-
-              // Live trip and voucher totals
-              Row(
-                children: [
-                  _buildStatCard(
-                    _statsLoadFailed
-                        ? '—'
-                        : _completedTrips?.toString() ?? '...',
-                    s.tripsCompleted,
-                  ),
-                  const SizedBox(width: 10),
-                  _buildStatCard(
-                    availableVouchers.length.toString(),
-                    s.activeVouchers,
-                  ),
-                ],
-              ),
-
               const SizedBox(height: 24),
 
               // Menu Settings Section
@@ -605,41 +565,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 24),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String value, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.pureWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.borderLight, width: 1),
-        ),
-        alignment: Alignment.center,
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: AppColors.primaryGreen,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
         ),
       ),
     );

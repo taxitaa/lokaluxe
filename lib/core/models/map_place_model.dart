@@ -76,6 +76,7 @@ class MapPlace {
   final String imageUrl;
   final String? description;
   final String? openHours;
+  final String? googleMapsUri;
   final List<String> tags;
   bool isFavorite;
 
@@ -94,6 +95,7 @@ class MapPlace {
     required this.imageUrl,
     this.description,
     this.openHours,
+    this.googleMapsUri,
     this.tags = const [],
     this.isFavorite = false,
   });
@@ -142,6 +144,7 @@ class MapPlace {
     String? imageUrl,
     String? description,
     String? openHours,
+    String? googleMapsUri,
     List<String>? tags,
     bool? isFavorite,
   }) {
@@ -160,6 +163,7 @@ class MapPlace {
       imageUrl: imageUrl ?? this.imageUrl,
       description: description ?? this.description,
       openHours: openHours ?? this.openHours,
+      googleMapsUri: googleMapsUri ?? this.googleMapsUri,
       tags: tags ?? this.tags,
       isFavorite: isFavorite ?? this.isFavorite,
     );

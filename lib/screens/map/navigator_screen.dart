@@ -54,6 +54,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   String _searchQuery = '';
   MapPlace? _selectedPlace;
   RouteInfo? _activeRoute;
+  List<LatLng>? _routeWayGeometry;
 
   bool _isMapReady = false;
   bool _isRequestingLocation = false;
@@ -64,6 +65,9 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   String? _placesError;
 
   bool get _isSearching => _searchQuery.isNotEmpty;
+  Timer? _searchDebounce;
+  bool _isRemoteSearching = false;
+  int _searchGeneration = 0;
 
   LatLng? _userLocation;
   late LatLng _mapCenter;
@@ -74,6 +78,11 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
 
   // Data Murni dari OpenStreetMap Overpass API
   List<MapPlace> _allPlaces = [];
+
+  /// Hasil pencarian teks (Nominatim/Photon) — STATE TERPISAH dari hasil LBS
+  /// agar pencarian bebas tidak mencemari/menimpa hasil kategori LBS, dan
+  /// tetap berfungsi di tab mana pun tanpa terikat filter kategori aktif.
+  List<MapPlace> _searchResults = [];
 
   // Kategori Chip yang ditampilkan di UI
   static const List<PlaceCategory> _displayCategories = [
@@ -100,9 +109,56 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   @override
   void dispose() {
     _positionSubscription?.cancel();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Dipanggil saat pengguna mengetik di search bar.
+  /// Menjalankan pencarian remote (Nominatim OSM) secara debounce untuk
+  /// menemukan tempat kategori LBS terdekat sesuai teks (mis. "hotel",
+  /// "taman", "restoran", "museum"), lalu menggabungkannya ke hasil lokal.
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    final query = value.trim();
+    setState(() => _searchQuery = query);
+
+    if (query.isEmpty) return;
+    // Jika belum ada lokasi GPS, pakai pusat peta sebagai acuan pencarian
+    // sehingga search bar tetap berfungsi sebelum izin lokasi disetujui.
+    final location = _userLocation ?? _mapCenter;
+
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final generation = ++_searchGeneration;
+      setState(() => _isRemoteSearching = true);
+      try {
+        final remoteResults = await MapPlacesService.searchPlacesByText(
+          query: query,
+          userLocation: location,
+          limit: 20,
+        );
+        if (!mounted || generation != _searchGeneration) return;
+
+        setState(() {
+          // Hasil pencarian disimpan di state terpisah (BUKAN _allPlaces)
+          // sehingga tidak pernah menimpa atau mencemari hasil LBS.
+          _searchResults = remoteResults
+            ..sort((a, b) => a
+                .distanceTo(location)
+                .compareTo(b.distanceTo(location)));
+        });
+
+        // Fokuskan peta ke hasil teratas (ala Google Maps)
+        if (mounted && remoteResults.isNotEmpty) {
+          _centerMapOn(remoteResults.first.coordinates);
+        }
+      } finally {
+        if (mounted && generation == _searchGeneration) {
+          setState(() => _isRemoteSearching = false);
+        }
+      }
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -153,13 +209,35 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         return;
       }
 
-      // Ambil posisi riil perangkat terkini
-      final currentPosition = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
-        ),
-      );
+      // Tampilkan posisi terakhir yang diketahui perangkat lebih dulu (jika ada)
+      // agar LBS tetap jalan cepat meskipun fix GPS presisi tinggi belum didapat.
+      final lastKnownPosition = await Geolocator.getLastKnownPosition();
+      if (lastKnownPosition != null) {
+        _updateDeviceLocation(lastKnownPosition, forceSearch: true);
+      }
+
+      // Ambil posisi riil perangkat terkini.
+      // Fallback ke akurasi lebih rendah jika fix "high" timeout (GPS lemah/indoor)
+      // supaya lokasi realtime tetap terkunci dan tidak berakhir di state error.
+      Position currentPosition;
+      try {
+        currentPosition = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+      } on TimeoutException {
+        debugPrint(
+          '[NavigatorScreen] Fix GPS high accuracy timeout, fallback ke medium.',
+        );
+        currentPosition = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+      }
 
       _updateDeviceLocation(currentPosition, forceSearch: true);
 
@@ -288,6 +366,11 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   // PENCARIAN TEMPAT (MURNI OPENSTREETMAP OVERPASS API)
   // ──────────────────────────────────────────────────────────────────────────
 
+  /// Cache hasil per kategori di layar: perpindahan tab LBS langsung
+  /// menampilkan hasil yang sudah pernah dimuat (feeling instant), lalu
+  /// refresh di belakang tanpa mengosongkan daftar.
+  final Map<PlaceCategory, List<MapPlace>> _categoryCache = {};
+
   Future<void> _loadPlaces({
     bool forceRefresh = false,
     bool bypassThrottle = false,
@@ -300,15 +383,18 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
     if (!forceRefresh &&
         !bypassThrottle &&
         lastRequest != null &&
-        now.difference(lastRequest) < const Duration(seconds: 3)) {
+        now.difference(lastRequest) < const Duration(seconds: 2)) {
       return;
     }
 
     _lastPlacesRequestAt = now;
     final requestGeneration = ++_placesRequestGeneration;
 
+    final cachedForCategory = _categoryCache[_selectedCategory];
+    final haveCachedData = cachedForCategory != null && cachedForCategory.isNotEmpty;
+
     setState(() {
-      _isLoadingPlaces = true;
+      _isLoadingPlaces = !haveCachedData || forceRefresh;
       _placesError = null;
     });
 
@@ -326,39 +412,92 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
         _allPlaces = places;
         _isLoadingPlaces = false;
         _placesError = null;
+        _categoryCache[_selectedCategory] = places;
       });
     } catch (error) {
       debugPrint('[NavigatorScreen] Gagal memuat tempat Overpass: $error');
       if (!mounted || requestGeneration != _placesRequestGeneration) return;
 
+      // Jika ada cache lama untuk kategori ini, tampilkan saja (jangan error).
+      if (haveCachedData) {
+        setState(() {
+          _allPlaces = cachedForCategory;
+          _isLoadingPlaces = false;
+          _placesError = null;
+        });
+        return;
+      }
+
       setState(() {
         _isLoadingPlaces = false;
-        _placesError = _tr(
-          'Gagal memuat tempat sekitar dari server OpenStreetMap Overpass. Silakan periksa jaringan dan coba lagi.',
-          'Failed to load nearby places from OpenStreetMap Overpass servers. Please check your connection and retry.',
-        );
+        _placesError = error is MapPlacesSearchException
+            ? _describePlacesFailure(error)
+            : _tr(
+                'Gagal memuat tempat sekitar dari server OpenStreetMap. Silakan periksa jaringan dan coba lagi.',
+                'Failed to load nearby places from OpenStreetMap servers. Please check your connection and retry.',
+              );
       });
     }
   }
 
-  // Filter daftar tempat berdasarkan pencarian teks & kategori
+  /// Menerjemahkan jenis kegagalan API menjadi pesan yang SPESIFIK —
+  /// kegagalan jaringan/timeout/rate-limit TIDAK boleh tampil sebagai
+  /// "tidak ada tempat ditemukan" (dua kondisi yang berbeda).
+  String _describePlacesFailure(MapPlacesSearchException error) {
+    return switch (error.kind) {
+      MapPlacesFailureKind.network => _tr(
+          'Koneksi jaringan terputus. Periksa internet Anda lalu coba lagi.',
+          'Network connection lost. Check your internet and try again.',
+        ),
+      MapPlacesFailureKind.timeout => _tr(
+          'Koneksi ke server OpenStreetMap timeout. Silakan coba lagi.',
+          'Connection to OpenStreetMap servers timed out. Please retry.',
+        ),
+      MapPlacesFailureKind.rateLimited => _tr(
+          'Server OpenStreetMap sedang sibuk (batas permintaan tercapai). Tunggu sebentar lalu coba lagi.',
+          'OpenStreetMap servers are busy (rate limit reached). Wait a moment and retry.',
+        ),
+      MapPlacesFailureKind.invalidResponse => _tr(
+          'Respons server OpenStreetMap tidak valid. Silakan coba lagi.',
+          'Invalid response from OpenStreetMap servers. Please retry.',
+        ),
+      MapPlacesFailureKind.invalidRequest => _tr(
+          'Pencarian tidak dapat dijalankan: lokasi atau radius tidak valid.',
+          'Search could not run: invalid location or radius.',
+        ),
+      MapPlacesFailureKind.server => _tr(
+          'Server OpenStreetMap gagal merespons (kesalahan server). Silakan coba lagi.',
+          'OpenStreetMap servers failed to respond (server error). Please retry.',
+        ),
+      MapPlacesFailureKind.suspectedIncomplete => _tr(
+          'Server OpenStreetMap mengembalikan data yang tidak lengkap. Silakan coba lagi.',
+          'OpenStreetMap returned incomplete data. Please retry.',
+        ),
+    };
+  }
+
+  // Filter daftar tempat berdasarkan pencarian teks & kategori.
+  // Saat pencarian teks aktif: sumbernya _searchResults (hasil geocoder
+  // Nominatim/Photon) dan TIDAK dibatasi kategori tab aktif — mencari taman
+  // di tab Hotel tetap menemukan taman (pencarian bebas ala Google Maps).
+  // Saat pencarian kosong: sumbernya _allPlaces (hasil LBS) difilter kategori.
   List<MapPlace> get _filteredPlaces {
-    return _allPlaces.where((place) {
-      if (_selectedCategory != PlaceCategory.all &&
-          place.category != _selectedCategory) {
-        return false;
-      }
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery.toLowerCase();
-        final matchName = place.name.toLowerCase().contains(q);
-        final matchCity = place.city.toLowerCase().contains(q);
-        final matchCat = place.category.labelId.toLowerCase().contains(q) ||
-            place.category.labelEn.toLowerCase().contains(q);
-        final matchAddr = place.address.toLowerCase().contains(q);
-        if (!matchName && !matchCity && !matchCat && !matchAddr) return false;
-      }
-      return true;
-    }).toList();
+    if (_isSearching) {
+      final q = _searchQuery.toLowerCase();
+      return _searchResults.where((place) {
+        return place.name.toLowerCase().contains(q) ||
+            place.city.toLowerCase().contains(q) ||
+            place.category.labelId.toLowerCase().contains(q) ||
+            place.category.labelEn.toLowerCase().contains(q) ||
+            place.address.toLowerCase().contains(q);
+      }).toList();
+    }
+    if (_selectedCategory != PlaceCategory.all) {
+      return _allPlaces
+          .where((place) => place.category == _selectedCategory)
+          .toList();
+    }
+    return _allPlaces;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -457,7 +596,12 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
     setState(() {
       _selectedPlace = place;
       _activeRoute = route;
+      _routeWayGeometry = null;
     });
+
+    // Coba ambil geometri rute jalan nyata (street-level) dari OpenStreetMap
+    // agar garis rute mengikuti jalan, bukan sekadar garis lurus.
+    unawaited(_fetchRouteWayGeometry(place));
 
     // Posisikan kamera peta agar posisi pengguna dan tujuan terlihat bersamaan
     if (_isMapReady) {
@@ -478,9 +622,43 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
   void _clearRoute() {
     setState(() {
       _activeRoute = null;
+      _routeWayGeometry = null;
     });
     if (_userLocation != null) {
       _centerMapOn(_userLocation!, zoom: _initialZoom);
+    }
+  }
+
+  /// Titik polyline rute yang digambar di peta.
+  /// Memakai geometri jalan nyata dari OpenStreetMap (jalan/route way) bila
+  /// berhasil diambil; jika tidak, jatuh ke garis lurus origin→tujuan.
+  List<LatLng> get _routePolylinePoints {
+    final route = _activeRoute;
+    final userLoc = _userLocation;
+    if (route == null || userLoc == null) return const [];
+
+    final geometry = _routeWayGeometry;
+    if (geometry != null && geometry.length >= 2) {
+      return geometry;
+    }
+    return [userLoc, route.destination.coordinates];
+  }
+
+  /// Mengambil geometri jalan nyata (street-level) dari OpenStreetMap Overpass
+  /// untuk rute mobil/pejalan kaki menuju tujuan. Gagal = fallback garis lurus.
+  Future<void> _fetchRouteWayGeometry(MapPlace destination) async {
+    final userLoc = _userLocation;
+    if (userLoc == null) return;
+
+    try {
+      final points = await MapPlacesService.fetchDrivingRoutePolyline(
+        origin: userLoc,
+        destination: destination.coordinates,
+      );
+      if (!mounted || points.isEmpty) return;
+      setState(() => _routeWayGeometry = points);
+    } catch (error) {
+      debugPrint('[NavigatorScreen] Gagal ambil geometri rute OSM: $error');
     }
   }
 
@@ -628,8 +806,8 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                   child: TextField(
                     controller: _searchController,
                     textInputAction: TextInputAction.search,
-                    onChanged: (value) =>
-                        setState(() => _searchQuery = value.trim()),
+                    onSubmitted: _onSearchChanged,
+                    onChanged: _onSearchChanged,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
                       color: AppColors.textDark,
@@ -650,7 +828,10 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                               tooltip: _tr('Hapus pencarian', 'Clear search'),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() => _searchQuery = '');
+                                setState(() {
+                                  _searchQuery = '';
+                                  _searchResults = [];
+                                });
                               },
                               icon: const Icon(Icons.close_rounded),
                             ),
@@ -715,6 +896,8 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                         ),
 
                         // Kartu Informasi Detail Tempat Terpilih
+                        // (SUDAH ADA DI ATAS — duplikasi marker terpilih dihapus
+                        // saat pencarian aktif, lihat peta di bawah)
                         if (_selectedPlace != null && _activeRoute == null)
                           _buildDetailInfoCard(_selectedPlace!),
 
@@ -773,7 +956,7 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          _isLoadingPlaces
+                          (_isLoadingPlaces || _isRemoteSearching)
                               ? _tr('Mencari...', 'Searching...')
                               : '${filtered.length} tempat',
                           style: GoogleFonts.plusJakartaSans(
@@ -1019,6 +1202,8 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
                 _selectedPlace = null;
                 _activeRoute = null;
               });
+              // Berpindah tab hanya memfilter dari cache area — service
+              // tidak menembak Overpass lagi jika data area masih berlaku.
               _loadPlaces(bypassThrottle: true);
             },
             child: AnimatedContainer(
@@ -1154,17 +1339,43 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
       }),
     ];
 
-    // Polylines untuk rute garis lurus jika rute aktif
+    // Polylines untuk rute jika aktif — digambar sebagai garis putus-putus
+    // berwarna yang rapi (outline kontras + isi), mengikuti jalan nyata
+    // menggunakan geometri dari OpenStreetMap Overpass bila tersedia.
+    final routePoints = _routePolylinePoints;
     final polylines = <flutter_map.Polyline>[
-      if (_activeRoute != null && _userLocation != null)
+      if (routePoints.length >= 2) ...[
+        // Layer 1: casing putih agak tebal sebagai outline agar garis rute
+        // terpisah jelas dari garis jalan pada tile peta.
         flutter_map.Polyline(
-          points: [_userLocation!, _activeRoute!.destination.coordinates],
-          strokeWidth: 4.0,
-          color: AppColors.primaryGreen,
+          points: routePoints,
+          strokeWidth: 10.0,
+          color: Colors.white,
+          pattern: flutter_map.StrokePattern.solid(),
+          borderStrokeWidth: 0,
+        ),
+        // Layer 2: garis rute utama — dashed amber stabil (bukan bergaris
+        // zig-zag), dengan border gelap tipis agar terlihat di terang/gelap.
+        flutter_map.Polyline(
+          points: routePoints,
+          strokeWidth: 6.0,
+          color: const Color(0xFFF4A261),
+          borderStrokeWidth: 1.5,
+          borderColor: const Color(0xFFB4592A),
           pattern: flutter_map.StrokePattern.dashed(
-            segments: const [10, 6],
+            segments: const [18, 12],
           ),
         ),
+        // Layer 3: highlight pusat garis agar terlihat mulus dan konsisten
+        flutter_map.Polyline(
+          points: routePoints,
+          strokeWidth: 2.0,
+          color: Colors.white.withValues(alpha: 0.55),
+          pattern: flutter_map.StrokePattern.dashed(
+            segments: const [18, 12],
+          ),
+        ),
+      ],
     ];
 
     return flutter_map.FlutterMap(
@@ -1188,9 +1399,9 @@ class _NavigatorScreenState extends State<NavigatorScreen> {
       ),
       children: [
         // Tile Layer OpenStreetMap publik tanpa API Key berbayar
+        // (tanpa subdomain — OSM melarang penggunaan subdomain a/b/c)
         flutter_map.TileLayer(
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: const ['a','b','c'],
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.lokaluxe.app',
           maxZoom: 19,
         ),

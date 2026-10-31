@@ -145,7 +145,7 @@ void main() {
         radiusMeters: 3000,
         forceRefresh: true,
         client: MockClient((request) async {
-          sentQuery = Uri.splitQueryString(request.body)['data'];
+          sentQuery = request.url.queryParameters['data'];
           return httpResponse({
             'elements': [
               {
@@ -218,7 +218,7 @@ void main() {
       },
     );
 
-    test('Requests only tags for the selected category', () async {
+    test('Requests a combined multi-category Overpass query for any tab', () async {
       String? sentQuery;
       await MapPlacesService.searchNearbyPlaces(
         userLocation: const LatLng(7.1234, 110.1234),
@@ -226,13 +226,74 @@ void main() {
         category: PlaceCategory.amusement,
         forceRefresh: true,
         client: MockClient((request) async {
-          sentQuery = Uri.splitQueryString(request.body)['data'];
+          sentQuery = request.url.queryParameters['data'];
           return httpResponse({'elements': []});
         }),
       );
 
-      expect(sentQuery, contains('"tourism"~"^(attraction'));
-      expect(sentQuery, isNot(contains('"amenity"~"restaurant')));
+      // Query gabungan: satu fetch memuat SEMUA kategori, kategori dipisah
+      // di sisi aplikasi (_filterByCategory) sehingga berpindah tab tidak
+      // menembak Overpass berulang.
+      expect(sentQuery, contains('"tourism"~"^(hotel'));
+      expect(sentQuery, contains('"amenity"~"^(restaurant'));
+      expect(sentQuery, contains('"leisure"~"^(park'));
+    });
+
+    test('Filters the combined area cache by the selected category', () async {
+      // Fetch gabungan sekali untuk area ini...
+      await MapPlacesService.searchNearbyPlaces(
+        userLocation: const LatLng(-6.2, 106.8),
+        radiusMeters: 3000,
+        category: PlaceCategory.all,
+        forceRefresh: true,
+        client: MockClient((request) async {
+          return httpResponse({
+            'elements': [
+              {
+                'type': 'node',
+                'id': 100,
+                'lat': -6.201,
+                'lon': 106.8,
+                'tags': {'name': 'Nearby Cafe', 'amenity': 'cafe'},
+              },
+              {
+                'type': 'way',
+                'id': 200,
+                'center': {'lat': -6.202, 'lon': 106.8},
+                'tags': {'name': 'Nearby Hotel', 'tourism': 'hotel'},
+              },
+            ],
+          });
+        }),
+      );
+
+      // ...lalu setiap tab HARUS terfilter dari cache TANPA request baru
+      // (mock tidak dipasang ulang — jika request terjadi, mockClient
+      // tidak ada sehingga HTTP nyata dipanggil dan test gagal timeouts;
+      // lebih aman: verify hasil filter langsung).
+      final hotelsOnly = await MapPlacesService.searchNearbyPlaces(
+        userLocation: const LatLng(-6.2, 106.8),
+        radiusMeters: 3000,
+        category: PlaceCategory.hotel,
+      );
+      expect(hotelsOnly, hasLength(1));
+      expect(hotelsOnly.single.name, 'Nearby Hotel');
+      expect(hotelsOnly.single.category, PlaceCategory.hotel);
+
+      final culinaryOnly = await MapPlacesService.searchNearbyPlaces(
+        userLocation: const LatLng(-6.2, 106.8),
+        radiusMeters: 3000,
+        category: PlaceCategory.restaurants,
+      );
+      expect(culinaryOnly, hasLength(1));
+      expect(culinaryOnly.single.name, 'Nearby Cafe');
+
+      final all = await MapPlacesService.searchNearbyPlaces(
+        userLocation: const LatLng(-6.2, 106.8),
+        radiusMeters: 3000,
+        category: PlaceCategory.all,
+      );
+      expect(all, hasLength(2));
     });
 
     test(

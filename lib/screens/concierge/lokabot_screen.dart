@@ -27,10 +27,16 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
   final _scrollController = ScrollController();
   final _imagePicker = ImagePicker();
   final _aiService = ConciergeAiService();
-  final List<_LokaBotMessage> _messages = [];
+  static final List<_LokaBotMessage> _sessionMessages = [];
   Uint8List? _pendingImageBytes;
   String? _pendingImageMimeType;
   bool _isSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_sessionMessages.isNotEmpty) _scrollToLatest();
+  }
 
   @override
   void dispose() {
@@ -53,7 +59,7 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
       });
     }
     setState(() {
-      _messages.add(
+      _sessionMessages.add(
         _LokaBotMessage(
           text: text.isEmpty ? 'Ini tempat wisata di mana?' : text,
           isUser: true,
@@ -75,16 +81,14 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
                 question: text,
               ),
             );
-      if (!mounted) return;
-      setState(() {
-        _messages.add(
-          _LokaBotMessage(
-            text: reply.text,
-            isUser: false,
-            showConciergeButton: !reply.isRecognized,
-          ),
-        );
-      });
+      _sessionMessages.add(
+        _LokaBotMessage(
+          text: reply.text,
+          isUser: false,
+          showConciergeButton: !reply.isRecognized,
+        ),
+      );
+      if (mounted) setState(() {});
     } catch (error, stackTrace) {
       debugPrint('[LokaBotScreen] Could not process chat request: $error');
       FlutterError.reportError(
@@ -99,7 +103,6 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
           ),
         ),
       );
-      if (!mounted) return;
       final message = imageBytes == null
           ? 'Data lokal tidak dapat dibaca: $error'
           : error is StateError
@@ -107,14 +110,8 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
           : error is FormatException
           ? error.message
           : 'Foto tidak dapat dianalisis. Periksa koneksi internet lalu coba lagi.';
-      setState(() {
-        _messages.add(
-          _LokaBotMessage(
-            text: message,
-            isUser: false,
-          ),
-        );
-      });
+      _sessionMessages.add(_LokaBotMessage(text: message, isUser: false));
+      if (mounted) setState(() {});
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
@@ -255,7 +252,7 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
                         vertical: 3,
                       ),
                       child: Text(
-                        'Chat offline • analisis foto perlu internet',
+                        'Selalu siap membantu!',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
@@ -274,17 +271,17 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty
+            child: _sessionMessages.isEmpty
                 ? _buildExamples()
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                    itemCount: _messages.length + (_isSending ? 1 : 0),
+                    itemCount: _sessionMessages.length + (_isSending ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index == _messages.length) {
+                      if (index == _sessionMessages.length) {
                         return const _TypingIndicator();
                       }
-                      final message = _messages[index];
+                      final message = _sessionMessages[index];
                       return _MessageBubble(
                         message: message,
                         onOpenConcierge:

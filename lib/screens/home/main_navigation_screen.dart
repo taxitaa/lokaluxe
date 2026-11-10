@@ -44,7 +44,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         profileRefreshToken: _profileRefreshToken,
       ),
       NavigatorScreen(onBack: () => _onTabTapped(0)),
-      const ConciergeScreen(),
+      ConciergeScreen(onBack: () => _onTabTapped(0)),
       const ProfileScreen(),
     ];
 

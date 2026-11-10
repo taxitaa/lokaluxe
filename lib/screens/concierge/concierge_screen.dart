@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/database/db_helper.dart';
@@ -24,9 +26,12 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _aiService = ConciergeAiService();
+  final _imagePicker = ImagePicker();
 
   final List<_ChatMessage> _messages = [];
 
+  Uint8List? _pendingImageBytes;
+  String? _pendingImageMimeType;
   TripRequest _tripRequest = const TripRequest();
   bool _awaitingItineraryConfirmation = false;
   bool _collectingTripDetails = false;
@@ -47,21 +52,59 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
 
   Future<void> _sendMessage([String? textToSend]) async {
     final text = (textToSend ?? _messageController.text).trim();
-    if (text.isEmpty || _isSending) return;
+    final imageBytes = _pendingImageBytes;
+    final imageMimeType = _pendingImageMimeType;
+    if ((text.isEmpty && imageBytes == null) || _isSending) return;
 
     _messageController.clear();
+    if (imageBytes != null) {
+      setState(() {
+        _pendingImageBytes = null;
+        _pendingImageMimeType = null;
+      });
+    }
 
-    await _handleGeminiMessage(text);
+    await _handleGeminiMessage(
+      text,
+      imageBytes: imageBytes,
+      imageMimeType: imageMimeType,
+    );
   }
 
-  Future<void> _handleGeminiMessage(String text) async {
+  Future<void> _handleGeminiMessage(
+    String text, {
+    Uint8List? imageBytes,
+    String? imageMimeType,
+  }) async {
+    final displayText = text.isEmpty && imageBytes != null
+        ? context.read<LocalizationProvider>().strings.localized(
+            'Ini tempat wisata di mana?',
+            'Where is this tourist attraction?',
+          )
+        : text;
     setState(() {
-      _messages.add(_ChatMessage(text: text, isUser: true));
+      _messages.add(
+        _ChatMessage(text: displayText, isUser: true, imageBytes: imageBytes),
+      );
       _isSending = true;
     });
     _scrollToLatest();
 
     try {
+      if (imageBytes != null) {
+        final reply = await _aiService.identifyIndonesianTourismImage(
+          imageBytes: imageBytes,
+          mimeType: imageMimeType ?? 'image/jpeg',
+          languageCode: context.read<LocalizationProvider>().langCode,
+          question: text,
+        );
+        if (!mounted) return;
+        setState(() {
+          _messages.add(_ChatMessage(text: reply, isUser: false));
+        });
+        return;
+      }
+
       if (_awaitingItineraryConfirmation && _isConfirmation(text)) {
         _awaitingItineraryConfirmation = false;
         _collectingTripDetails = true;
@@ -114,6 +157,8 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     } catch (error) {
       if (!mounted) return;
       final message = error is StateError
+          ? error.message.toString()
+          : error is FormatException
           ? error.message.toString()
           : 'Terjadi kendala saat menghubungi AI. Silakan coba lagi.';
       setState(() {
@@ -285,6 +330,67 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     });
   }
 
+  Future<void> _showImageSourcePicker() async {
+    final strings = context.read<LocalizationProvider>().strings;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.warmCream,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: Text(strings.localized('Ambil foto', 'Take a photo')),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(
+                strings.localized('Pilih dari galeri', 'Choose from gallery'),
+              ),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || source == null) return;
+    await _pickImage(source);
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    if (_isSending) return;
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pendingImageBytes = bytes;
+        _pendingImageMimeType = image.mimeType ?? 'image/jpeg';
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[ConciergeScreen] Could not select an image: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.read<LocalizationProvider>().strings.localized(
+              'Foto tidak dapat dibuka. Coba pilih foto lain atau periksa izin kamera.',
+              'Could not open the photo. Try another image or check camera permissions.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = context.watch<LocalizationProvider>().strings;
@@ -443,76 +549,127 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
   }
 
   Widget _buildComposer() {
+    final strings = context.watch<LocalizationProvider>().strings;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: BoxDecoration(
         color: AppColors.warmCream,
         border: Border(top: BorderSide(color: AppColors.borderLight)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.pureWhite,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.035),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
+          if (_pendingImageBytes case final imageBytes?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.memory(
+                      imageBytes,
+                      width: 58,
+                      height: 58,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      enabled: !_isSending,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        color: AppColors.textDark,
+                    child: Text(
+                      strings.localized(
+                        'Foto siap dianalisis khusus untuk wisata Indonesia',
+                        'Photo ready for Indonesia tourism analysis',
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Tanya seputar perjalananmu...',
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          color: AppColors.textMuted,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.only(
-                          left: 16,
-                          right: 14,
-                          top: 13,
-                          bottom: 13,
-                        ),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
+                  IconButton(
+                    tooltip: strings.localized('Hapus foto', 'Remove photo'),
+                    onPressed: _isSending
+                        ? null
+                        : () => setState(() {
+                            _pendingImageBytes = null;
+                            _pendingImageMimeType = null;
+                          }),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          CircleAvatar(
-            radius: 25,
-            backgroundColor: _isSending
-                ? AppColors.textMuted
-                : AppColors.primaryGreen,
-            child: IconButton(
-              tooltip: 'Kirim pesan',
-              icon: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 21,
+          Row(
+            children: [
+              IconButton(
+                tooltip: strings.localized('Lampirkan foto', 'Attach a photo'),
+                onPressed: _isSending ? null : _showImageSourcePicker,
+                icon: const Icon(
+                  Icons.add_a_photo_outlined,
+                  color: AppColors.primaryGreen,
+                ),
               ),
-              onPressed: _isSending ? null : () => _sendMessage(),
-            ),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.pureWhite,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.035),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _messageController,
+                    enabled: !_isSending,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      color: AppColors.textDark,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: strings.localized(
+                        'Tanya seputar perjalananmu...',
+                        'Ask about your trip...',
+                      ),
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        color: AppColors.textMuted,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.only(
+                        left: 16,
+                        right: 14,
+                        top: 13,
+                        bottom: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: _isSending
+                    ? AppColors.textMuted
+                    : AppColors.primaryGreen,
+                child: IconButton(
+                  tooltip: strings.localized('Kirim pesan', 'Send message'),
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                  onPressed: _isSending ? null : () => _sendMessage(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -524,11 +681,13 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final bool isError;
+  final Uint8List? imageBytes;
 
   const _ChatMessage({
     required this.text,
     required this.isUser,
     this.isError = false,
+    this.imageBytes,
   });
 }
 
@@ -567,6 +726,19 @@ class _MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (message.imageBytes case final imageBytes?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.memory(
+                  imageBytes,
+                  width: 220,
+                  height: 180,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
           _FormattedChatText(
             text: message.text,
             color: isUser

@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../core/services/concierge_ai_service.dart';
 import '../../core/services/lokabot_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'concierge_screen.dart';
@@ -21,7 +25,11 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
 
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _imagePicker = ImagePicker();
+  final _aiService = ConciergeAiService();
   final List<_LokaBotMessage> _messages = [];
+  Uint8List? _pendingImageBytes;
+  String? _pendingImageMimeType;
   bool _isSending = false;
 
   @override
@@ -33,17 +41,40 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
 
   Future<void> _sendMessage([String? suggestion]) async {
     final text = (suggestion ?? _messageController.text).trim();
-    if (text.isEmpty || _isSending) return;
+    final imageBytes = _pendingImageBytes;
+    final imageMimeType = _pendingImageMimeType;
+    if ((text.isEmpty && imageBytes == null) || _isSending) return;
 
     _messageController.clear();
+    if (imageBytes != null) {
+      setState(() {
+        _pendingImageBytes = null;
+        _pendingImageMimeType = null;
+      });
+    }
     setState(() {
-      _messages.add(_LokaBotMessage(text: text, isUser: true));
+      _messages.add(
+        _LokaBotMessage(
+          text: text.isEmpty ? 'Ini tempat wisata di mana?' : text,
+          isUser: true,
+          imageBytes: imageBytes,
+        ),
+      );
       _isSending = true;
     });
     _scrollToLatest();
 
     try {
-      final reply = await jawabLokaBot(text);
+      final reply = imageBytes == null
+          ? await jawabLokaBot(text)
+          : LokaBotReply(
+              text: await _aiService.identifyIndonesianTourismImage(
+                imageBytes: imageBytes,
+                mimeType: imageMimeType ?? 'image/jpeg',
+                languageCode: 'id',
+                question: text,
+              ),
+            );
       if (!mounted) return;
       setState(() {
         _messages.add(
@@ -55,20 +86,31 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
         );
       });
     } catch (error, stackTrace) {
-      debugPrint('[LokaBotScreen] Could not answer from local data: $error');
+      debugPrint('[LokaBotScreen] Could not process chat request: $error');
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
           stack: stackTrace,
           library: 'LokaBot',
-          context: ErrorDescription('while reading local travel data'),
+          context: ErrorDescription(
+            imageBytes == null
+                ? 'while reading local travel data'
+                : 'while analyzing a tourism photo',
+          ),
         ),
       );
       if (!mounted) return;
+      final message = imageBytes == null
+          ? 'Data lokal tidak dapat dibaca: $error'
+          : error is StateError
+          ? error.message.toString()
+          : error is FormatException
+          ? error.message
+          : 'Foto tidak dapat dianalisis. Periksa koneksi internet lalu coba lagi.';
       setState(() {
         _messages.add(
           _LokaBotMessage(
-            text: 'Data lokal tidak dapat dibaca: $error',
+            text: message,
             isUser: false,
           ),
         );
@@ -98,6 +140,61 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  Future<void> _showImageSourcePicker() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.warmCream,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Ambil foto'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Pilih dari galeri'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || source == null) return;
+    await _pickImage(source);
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    if (_isSending) return;
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pendingImageBytes = bytes;
+        _pendingImageMimeType = image.mimeType ?? 'image/jpeg';
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[LokaBotScreen] Could not select an image: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto tidak dapat dibuka. Coba pilih foto lain atau periksa izin kamera.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -140,7 +237,7 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
                     ),
                   ),
                   Text(
-                    'Asisten offline LokaLuxe',
+                    'Asisten LokaLuxe',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 10,
                       color: AppColors.textSecondary,
@@ -158,7 +255,7 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
                         vertical: 3,
                       ),
                       child: Text(
-                        'Offline • tanpa internet',
+                        'Chat offline • analisis foto perlu internet',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
@@ -245,63 +342,113 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                enabled: !_isSending,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendMessage(),
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  color: AppColors.textDark,
+            if (_pendingImageBytes case final imageBytes?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        imageBytes,
+                        width: 58,
+                        height: 58,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Foto siap dianalisis khusus untuk wisata Indonesia',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Hapus foto',
+                      onPressed: _isSending
+                          ? null
+                          : () => setState(() {
+                              _pendingImageBytes = null;
+                              _pendingImageMimeType = null;
+                            }),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Tanya seputar perjalananmu...',
-                  hintStyle: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: AppColors.textMuted,
+              ),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Lampirkan foto',
+                  onPressed: _isSending ? null : _showImageSourcePicker,
+                  icon: const Icon(
+                    Icons.add_a_photo_outlined,
+                    color: AppColors.primaryGreen,
                   ),
-                  filled: true,
-                  fillColor: AppColors.pureWhite,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: const BorderSide(
-                      color: AppColors.primaryGreen,
-                      width: 1,
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    enabled: !_isSending,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Tanya seputar perjalananmu...',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.pureWhite,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(
+                          color: AppColors.primaryGreen,
+                          width: 1,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 52,
-              height: 52,
-              child: IconButton.filled(
-                onPressed: _isSending ? null : () => _sendMessage(),
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                  disabledBackgroundColor: AppColors.textMuted,
-                  foregroundColor: Colors.white,
-                  shape: const CircleBorder(),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: IconButton.filled(
+                    onPressed: _isSending ? null : () => _sendMessage(),
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                      disabledBackgroundColor: AppColors.textMuted,
+                      foregroundColor: Colors.white,
+                      shape: const CircleBorder(),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 21),
+                    tooltip: 'Kirim',
+                  ),
                 ),
-                icon: const Icon(Icons.send_rounded, size: 21),
-                tooltip: 'Kirim',
-              ),
+              ],
             ),
           ],
         ),
@@ -314,11 +461,13 @@ class _LokaBotMessage {
   final String text;
   final bool isUser;
   final bool showConciergeButton;
+  final Uint8List? imageBytes;
 
   const _LokaBotMessage({
     required this.text,
     required this.isUser,
     this.showConciergeButton = false,
+    this.imageBytes,
   });
 }
 
@@ -344,6 +493,19 @@ class _MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (message.imageBytes case final imageBytes?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.memory(
+                  imageBytes,
+                  width: 220,
+                  height: 180,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
           Text(
             message.text,
             style: GoogleFonts.plusJakartaSans(

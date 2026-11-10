@@ -4,10 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/database/db_helper.dart';
+import '../../core/models/trip_itinerary_day_model.dart';
+import '../../core/models/trip_model.dart';
 import '../../core/services/concierge_ai_service.dart';
 import '../../core/services/lokabot_service.dart';
+import '../../core/services/lokabot_itinerary_service.dart';
+import '../../core/services/trip_reminder_service.dart';
+import '../../core/services/trip_request_parser.dart';
 import '../../core/theme/app_colors.dart';
 import 'concierge_screen.dart';
+import '../itinerary/itinerary_screen.dart';
 
 class LokaBotScreen extends StatefulWidget {
   const LokaBotScreen({super.key});
@@ -30,6 +37,10 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
   static final List<_LokaBotMessage> _sessionMessages = [];
   Uint8List? _pendingImageBytes;
   String? _pendingImageMimeType;
+  TripRequest _tripRequest = const TripRequest();
+  List<TripItineraryDay>? _pendingItineraryDays;
+  bool _collectingItineraryDetails = false;
+  bool _awaitingItinerarySave = false;
   bool _isSending = false;
 
   @override
@@ -71,6 +82,29 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
     _scrollToLatest();
 
     try {
+      if (imageBytes == null && _awaitingItinerarySave) {
+        await _handleItinerarySaveConfirmation(text);
+        return;
+      }
+      if (imageBytes == null &&
+          _collectingItineraryDetails &&
+          _isCancelMessage(text)) {
+        _resetItineraryRequest();
+        _addBotMessage('Oke, pembuatan itinerary dibatalkan.');
+        return;
+      }
+      if (imageBytes == null && _collectingItineraryDetails) {
+        _tripRequest = _tripRequest.merge(parseTripRequest(text));
+        await _prepareItinerary();
+        return;
+      }
+      if (imageBytes == null && _isItineraryCreationRequest(text)) {
+        _collectingItineraryDetails = true;
+        _tripRequest = parseTripRequest(text);
+        await _prepareItinerary();
+        return;
+      }
+
       final reply = imageBytes == null
           ? await jawabLokaBot(text)
           : LokaBotReply(
@@ -126,6 +160,196 @@ class _LokaBotScreenState extends State<LokaBotScreen> {
         builder: (_) => const ConciergeScreen(),
       ),
     );
+  }
+
+  bool _isItineraryCreationRequest(String text) => RegExp(
+    r'\b(?:buat(?:kan)?|bikin|susun(?:kan)?|rencanakan|jadwalkan)\b.*\b(?:itinerary|itenerary|itinerari|perjalanan|liburan)\b',
+    caseSensitive: false,
+  ).hasMatch(text);
+
+  bool _isCancelMessage(String text) => RegExp(
+    r'^\s*(?:batal|batalkan|tidak jadi|nggak jadi|enggak jadi)\b',
+    caseSensitive: false,
+  ).hasMatch(text);
+
+  void _resetItineraryRequest() {
+    _tripRequest = const TripRequest();
+    _pendingItineraryDays = null;
+    _collectingItineraryDetails = false;
+    _awaitingItinerarySave = false;
+  }
+
+  void _addBotMessage(String text) {
+    _sessionMessages.add(_LokaBotMessage(text: text, isUser: false));
+    if (mounted) setState(() {});
+    _scrollToLatest();
+  }
+
+  Future<void> _prepareItinerary() async {
+    final request = _tripRequest;
+    if (request.missingFields.isNotEmpty) {
+      _addBotMessage(
+        'Siap, aku susun itinerary memakai daftar wisata di database lokal. '
+        'Kirim data yang belum ada:\n'
+        '${request.missingFields.map((field) => '- $field').join('\n')}\n\n'
+        'Contoh: Tujuan: Yogyakarta; tanggal mulai: 20/12/2026; '
+        'durasi: 2 hari; jumlah orang: 2; budget: Rp2.000.000. '
+        'Ketik "batal" kapan saja untuk membatalkan.',
+      );
+      return;
+    }
+
+    final destination = request.destination!;
+    final startDate = request.startDate!;
+    final durationDays = request.durationDays!;
+    if (startDate.isBefore(DateUtils.dateOnly(DateTime.now()))) {
+      _addBotMessage(
+        'Tanggal mulai harus hari ini atau tanggal mendatang. Kirim tanggal baru.',
+      );
+      return;
+    }
+    if (durationDays < 1 || durationDays > 30) {
+      _addBotMessage('Durasi itinerary harus antara 1 sampai 30 hari.');
+      return;
+    }
+    if (request.travelerCount! < 1 || request.budget! <= 0) {
+      _addBotMessage('Jumlah orang dan budget harus lebih dari nol.');
+      return;
+    }
+
+    try {
+      final days = await LokaBotItineraryService.generateDays(
+        destination: destination,
+        durationDays: durationDays,
+      );
+      if (!mounted) return;
+      _pendingItineraryDays = days;
+      _collectingItineraryDetails = false;
+      _awaitingItinerarySave = true;
+      final preview = days
+          .take(3)
+          .map(
+            (day) =>
+                'Hari ${day.dayNumber}: ${day.activities.join(', ')}',
+          )
+          .join('\n');
+      _addBotMessage(
+        'Rencana $destination selama $durationDays hari untuk '
+        '${request.travelerCount} orang dengan budget '
+        'Rp${request.budget!.toStringAsFixed(0)}:\n$preview'
+        '${days.length > 3 ? '\n...dan ${days.length - 3} hari berikutnya.' : ''}'
+        '\n\nTempat disusun dari database wisata lokal. Ketik "simpan" untuk '
+        'menyimpan sebagai itinerary aktif, atau "batal" untuk membatalkan.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[LokaBotScreen] Could not build local itinerary: $error');
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'LokaBot itinerary',
+          context: ErrorDescription(
+            'while building an itinerary from local attractions',
+          ),
+        ),
+      );
+      _collectingItineraryDetails = true;
+      _addBotMessage(
+        error is StateError
+            ? error.message.toString()
+            : 'Itinerary gagal dibuat dari database lokal. Coba lagi.',
+      );
+    }
+  }
+
+  Future<void> _handleItinerarySaveConfirmation(String text) async {
+    if (_isCancelMessage(text)) {
+      _resetItineraryRequest();
+      _addBotMessage('Oke, itinerary tidak disimpan.');
+      return;
+    }
+    if (!RegExp(r'^\s*(?:simpan|ya|iya|oke|ok|setuju)\b', caseSensitive: false)
+        .hasMatch(text)) {
+      _addBotMessage('Ketik "simpan" untuk menyimpan, atau "batal" untuk keluar.');
+      return;
+    }
+
+    final request = _tripRequest;
+    final days = _pendingItineraryDays;
+    if (days == null || request.destination == null) {
+      _resetItineraryRequest();
+      _addBotMessage('Rencana itinerary sudah tidak tersedia. Silakan buat ulang.');
+      return;
+    }
+
+    final trip = TripModel(
+      destination: request.destination!,
+      destinationTitle: request.destination!,
+      dates: request.startDate!.toIso8601String(),
+      duration: '${request.durationDays} hari',
+      durationDays: request.durationDays,
+      travelerCount: request.travelerCount,
+      targetBudget: request.budget!,
+      transportAllocation: 0,
+      hotelAllocation: 0,
+      culinaryAllocation: 0,
+      activityAllocation: 0,
+    );
+
+    try {
+      final tripId = await DBHelper.saveTripWithItinerary(
+        trip: trip,
+        days: days,
+      );
+      _resetItineraryRequest();
+      var reminderMessage =
+          'Pengingat perjalanan dijadwalkan pukul 09.00 pada H-7, H-5, H-3, dan hari-H.';
+      try {
+        final result = await TripReminderService.schedule(
+          tripId: tripId,
+          destination: trip.destination,
+          startDate: request.startDate!,
+        );
+        if (result == TripReminderResult.permissionRequested) {
+          reminderMessage += ' Izinkan notifikasi agar pengingat tampil.';
+        } else if (result == TripReminderResult.unsupported) {
+          reminderMessage = 'Pengingat otomatis tersedia di Android.';
+        }
+      } catch (error, stackTrace) {
+        debugPrint('[LokaBotScreen] Could not schedule trip reminders: $error');
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'trip reminders',
+            context: ErrorDescription('while scheduling the saved itinerary'),
+          ),
+        );
+        reminderMessage =
+            'Itinerary tersimpan, tetapi pengingat gagal dijadwalkan.';
+      }
+
+      _addBotMessage(
+        'Itinerary ${trip.destination} berhasil disimpan dan menjadi '
+        'perjalanan aktif. Budget Rp${trip.targetBudget.toStringAsFixed(0)} '
+        'sudah masuk ke Budget Planner.\n\n$reminderMessage',
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const ItineraryScreen()),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[LokaBotScreen] Could not save itinerary: $error');
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'LokaBot itinerary',
+          context: ErrorDescription('while saving the confirmed itinerary'),
+        ),
+      );
+      _addBotMessage('Itinerary gagal disimpan. Coba lagi.');
+    }
   }
 
   void _scrollToLatest() {

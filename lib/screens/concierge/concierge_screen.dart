@@ -4,14 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/database/db_helper.dart';
-import '../../core/models/trip_model.dart';
 import '../../core/services/concierge_ai_service.dart';
 import '../../core/services/localization_provider.dart';
-import '../../core/services/trip_reminder_service.dart';
-import '../../core/services/trip_request_parser.dart';
 import '../../core/theme/app_colors.dart';
-import '../itinerary/itinerary_screen.dart';
 
 class ConciergeScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -29,9 +24,6 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
 
   final List<_ChatMessage> _messages = [];
 
-  TripRequest _tripRequest = const TripRequest();
-  bool _awaitingItineraryConfirmation = false;
-  bool _collectingTripDetails = false;
   bool _isSending = false;
 
   @override
@@ -63,33 +55,6 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     _scrollToLatest();
 
     try {
-      if (_awaitingItineraryConfirmation && _isConfirmation(text)) {
-        _awaitingItineraryConfirmation = false;
-        _collectingTripDetails = true;
-        final details = text.replaceFirst(
-          RegExp(
-            r'^(?:ya|iya|yap|mau|boleh|setuju|oke|ok|gas|buatkan|lanjut|yes)\b[,\s]*',
-            caseSensitive: false,
-          ),
-          '',
-        );
-        _tripRequest = parseTripRequest(details);
-        await _continueItineraryCreation();
-        return;
-      }
-      if (_awaitingItineraryConfirmation &&
-          RegExp(
-            r'^(?:tidak|nggak|enggak|belum|nanti|no)\b',
-            caseSensitive: false,
-          ).hasMatch(text)) {
-        _awaitingItineraryConfirmation = false;
-      }
-      if (_collectingTripDetails) {
-        _tripRequest = _tripRequest.merge(parseTripRequest(text));
-        await _continueItineraryCreation();
-        return;
-      }
-
       final conversation = _messages
           .where((message) => message.isUser || !message.isError)
           .map(
@@ -100,14 +65,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
           )
           .toList();
 
-      var reply = await _aiService.reply(conversation: conversation);
-      if (_shouldOfferItinerary(text)) {
-        reply =
-            '$reply\n\nMau aku susunkan itinerary lengkap dan '
-            'menyimpannya otomatis ke menu Itinerary serta Budget Planner? '
-            'Balas "mau" untuk mulai.';
-        _awaitingItineraryConfirmation = true;
-      }
+      final reply = await _aiService.reply(conversation: conversation);
       if (!mounted) return;
       setState(() {
         _messages.add(_ChatMessage(text: reply, isUser: false));
@@ -130,151 +88,6 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
         _scrollToLatest();
       }
     }
-  }
-
-  bool _isConfirmation(String text) => RegExp(
-    r'^(?:ya|iya|yap|mau|boleh|setuju|oke|ok|gas|buatkan|lanjut|yes)\b',
-    caseSensitive: false,
-  ).hasMatch(text.trim());
-
-  bool _shouldOfferItinerary(String text) => RegExp(
-    r'\b(?:itinerary|itenerary|itinerari|rekomendasi|rekomendasikan|saran|liburan|wisata|budget|trip|perjalanan)\b',
-    caseSensitive: false,
-  ).hasMatch(text);
-
-  Future<void> _continueItineraryCreation() async {
-    final request = _tripRequest;
-    if (request.missingFields.isNotEmpty) {
-      final missing = request.missingFields
-          .map((field) => '- $field')
-          .join('\n');
-      setState(
-        () => _messages.add(
-          _ChatMessage(
-            text:
-                'Siap, aku bantu buatkan dan simpan itinerary-mu. '
-                'Supaya rencananya lengkap, kirim data berikut:\n$missing\n\n'
-                'Contoh: Tujuan: Bali; tanggal mulai: 01/11/2026; '
-                'durasi: 3 hari; jumlah orang: 2; budget: Rp5.000.000.',
-            isUser: false,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final destination = request.destination!;
-    final startDate = request.startDate!;
-    final durationDays = request.durationDays!;
-    final travelerCount = request.travelerCount!;
-    final budget = request.budget!;
-    final today = DateTime.now();
-    if (startDate.isBefore(DateTime(today.year, today.month, today.day))) {
-      setState(
-        () => _messages.add(
-          const _ChatMessage(
-            text:
-                'Tanggal mulai harus hari ini atau tanggal mendatang. '
-                'Kirim tanggal baru dalam format DD/MM/YYYY.',
-            isUser: false,
-          ),
-        ),
-      );
-      return;
-    }
-    if (durationDays < 1 || durationDays > 30) {
-      setState(
-        () => _messages.add(
-          const _ChatMessage(
-            text:
-                'Durasi itinerary harus antara 1 sampai 30 hari. '
-                'Kirim jumlah hari yang sesuai.',
-            isUser: false,
-          ),
-        ),
-      );
-      return;
-    }
-    if (travelerCount < 1 || budget <= 0) {
-      setState(
-        () => _messages.add(
-          const _ChatMessage(
-            text:
-                'Jumlah orang dan total budget harus lebih dari nol. '
-                'Kirim jumlah orang serta budget yang valid.',
-            isUser: false,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final days = await _aiService.generateItinerary(
-      destination: destination,
-      startDate: startDate,
-      durationDays: durationDays,
-      travelerCount: travelerCount,
-      languageCode: context.read<LocalizationProvider>().langCode,
-    );
-    final trip = TripModel(
-      destination: destination,
-      destinationTitle: destination,
-      dates: startDate.toIso8601String(),
-      duration: '$durationDays hari',
-      durationDays: durationDays,
-      travelerCount: travelerCount,
-      targetBudget: budget,
-      transportAllocation: 0,
-      hotelAllocation: 0,
-      culinaryAllocation: 0,
-      activityAllocation: 0,
-    );
-    final tripId = await DBHelper.saveTripWithItinerary(trip: trip, days: days);
-
-    var reminderMessage =
-        'Pengingat dijadwalkan pukul 09.00 pada H-7, H-5, H-3, dan hari-H.';
-    try {
-      final reminderResult = await TripReminderService.schedule(
-        tripId: tripId,
-        destination: destination,
-        startDate: startDate,
-      );
-      if (reminderResult == TripReminderResult.permissionRequested) {
-        reminderMessage +=
-            ' Izinkan notifikasi saat diminta agar pengingat tampil.';
-      } else if (reminderResult == TripReminderResult.unsupported) {
-        reminderMessage = 'Pengingat otomatis tersedia di aplikasi Android.';
-      }
-    } catch (error, stackTrace) {
-      debugPrint('[ConciergeScreen] Could not schedule trip reminders: $error');
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stackTrace,
-          library: 'trip reminders',
-          context: ErrorDescription('while scheduling itinerary reminders'),
-        ),
-      );
-      reminderMessage =
-          'Itinerary dan budget tersimpan, tetapi pengingat gagal dijadwalkan.';
-    }
-
-    _collectingTripDetails = false;
-    setState(
-      () => _messages.add(
-        _ChatMessage(
-          text:
-              'Itinerary $destination selama $durationDays hari untuk '
-              '$travelerCount orang berhasil disimpan. Budget '
-              'Rp${budget.toStringAsFixed(0)} sudah masuk ke Budget Planner.\n\n'
-              '$reminderMessage',
-          isUser: false,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const ItineraryScreen()));
   }
 
   void _scrollToLatest() {

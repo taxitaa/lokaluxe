@@ -104,8 +104,8 @@ class LokaBotService {
             '1. **Jadwal Harian**: Kelola destinasi dan agenda hari demi hari (Hari 1, Hari 2, dst).\n'
             '2. **Pengingat Otomatis**: Aplikasi mengirim notifikasi pengingat pada H-7, H-5, H-3, dan Hari-H pukul 09.00.\n'
             '3. **Simpan dari Katalog**: Kamu bisa langsung menambahkan destinasi wisata favorit ke itinerary aktif.\n'
-            '4. **Pembuatan Otomatis**: AI Concierge (Gemini) juga bisa menyusunkan rencana perjalanan lengkap secara otomatis!\n\n'
-            '💡 **Cara Akses**: Ketuk ikon *Itinerary* di Beranda atau beralih ke mode AI Concierge untuk membuat rencana otomatis.',
+            '4. **Pembuatan Otomatis**: Minta LokaBot membuat itinerary; tempat wisata dipilih dari database lokal dan rencana dapat disimpan ke aplikasi.\n\n'
+            '💡 **Cara Akses**: Buka LokaBot dari ikon Rafflesia, lalu ketik "Buatkan itinerary" dan ikuti petunjuknya.',
         isRecognized: true,
       );
     }
@@ -401,7 +401,7 @@ class LokaBotService {
     }
 
     return const LokaBotReply(
-      text: 'Untuk membuat itinerary, ketuk pintasan **Itinerary** di Beranda. Kamu juga bisa membuka **AI Concierge** untuk meminta pembuatan itinerary otomatis.',
+      text: 'Untuk membuat itinerary, minta **LokaBot** menyusunnya dari database wisata lokal. Ketik "Buatkan itinerary" di chat LokaBot, lalu ikuti petunjuknya.',
     );
   }
 

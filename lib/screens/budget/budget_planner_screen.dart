@@ -872,22 +872,6 @@ class _BudgetPlannerScreenState extends State<BudgetPlannerScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              _plannerAnchorApi.trim().isEmpty
-                  ? _tr(
-                      'Hash SHA-256 dicantumkan di PDF. Pencatatan Sepolia menunggu backend.',
-                      'The SHA-256 hash is included in the PDF. Sepolia recording is pending backend configuration.',
-                    )
-                  : _tr(
-                      'Hash planner akan dikirim ke backend untuk dicatat di Sepolia.',
-                      'The planner hash will be sent to the backend for recording on Sepolia.',
-                    ),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-            ),
           ],
         ),
       ),

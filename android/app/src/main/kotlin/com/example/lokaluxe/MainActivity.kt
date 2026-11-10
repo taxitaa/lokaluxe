@@ -25,7 +25,6 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         createVoucherNotificationChannel()
-        TripReminderReceiver.cancelLegacyDailyEngagement(this)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -145,6 +144,28 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        TripReminderReceiver.scheduleDailyEngagement(this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            val preferences = getSharedPreferences(
+                "daily_app_notification_preferences",
+                Context.MODE_PRIVATE,
+            )
+            if (!preferences.getBoolean("permissionPromptRequested", false)) {
+                preferences.edit().putBoolean("permissionPromptRequested", true).apply()
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_NOTIFICATION_PERMISSION,
+                )
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Android")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -206,6 +227,10 @@ class MainActivity : FlutterFragmentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != REQUEST_NOTIFICATION_PERMISSION) return
+
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            TripReminderReceiver.scheduleDailyEngagement(this)
+        }
 
         val notification = pendingVoucherNotification
         pendingVoucherNotification = null

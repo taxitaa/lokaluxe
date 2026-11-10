@@ -17,7 +17,22 @@ class TripReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_REMINDER -> showReminder(context, intent)
-            Intent.ACTION_BOOT_COMPLETED -> scheduleStoredReminders(context)
+            ACTION_DAILY_ENGAGEMENT -> {
+                context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("scheduled", false)
+                    .apply()
+                showDailyEngagement(context)
+                scheduleNextDailyEngagement(context)
+            }
+            Intent.ACTION_BOOT_COMPLETED -> {
+                scheduleStoredReminders(context)
+                context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("scheduled", false)
+                    .apply()
+                scheduleNextDailyEngagement(context)
+            }
         }
     }
 
@@ -27,21 +42,27 @@ class TripReminderReceiver : BroadcastReceiver() {
         private const val PREFERENCES = "trip_reminder_preferences"
         private const val CHANNEL_ID = "trip_reminders"
         private const val DAILY_PREFERENCES = "daily_app_notification_preferences"
+        private const val DAILY_CHANNEL_ID = "daily_app_engagement"
         private const val DAILY_NOTIFICATION_ID = 20261024
         private const val DAILY_REQUEST_CODE = 20261024
+        private const val DAILY_INTERVAL_MILLIS = 3 * 60 * 60 * 1000L
         private val reminderOffsets = listOf(7, 5, 3, 0)
+        private val engagementMessages = listOf(
+            "Lagi pengin cari inspirasi liburan? Buka LokaLuxe dan temukan destinasi yang cocok buatmu.",
+            "Kalau bisa berangkat akhir pekan ini, kamu mau ke mana? Cek ide perjalananmu di LokaLuxe.",
+            "Sedikit waktu buat rencana seru? Yuk, intip destinasi dan itinerary di LokaLuxe.",
+            "Pantai, alam, atau kuliner lokal—lagi ingin yang mana? Temukan inspirasinya di LokaLuxe.",
+            "Rencana liburanmu sudah siap? Buka LokaLuxe untuk lanjut atur itinerary dan budget.",
+            "Butuh ide buat perjalanan berikutnya? LokaLuxe siap bantu kamu mulai merencanakannya.",
+        )
 
-        fun cancelLegacyDailyEngagement(context: Context) {
-            val alarmManager = context.getSystemService(AlarmManager::class.java)
-            val legacyAlarm = dailyPendingIntent(context)
-            alarmManager.cancel(legacyAlarm)
-            legacyAlarm.cancel()
-            context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
-                .edit()
-                .clear()
-                .apply()
-            context.getSystemService(NotificationManager::class.java)
-                .cancel(DAILY_NOTIFICATION_ID)
+        fun scheduleDailyEngagement(context: Context) {
+            if (!canPostNotifications(context)) return
+
+            val preferences = context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+            preferences.edit().putBoolean("enabled", true).apply()
+            if (preferences.getBoolean("scheduled", false)) return
+            scheduleNextDailyEngagement(context)
         }
 
         fun saveAndSchedule(
@@ -76,6 +97,32 @@ class TripReminderReceiver : BroadcastReceiver() {
             if (tripId < 0 || destination.isNullOrBlank() || startDateMillis <= 0) return
             schedule(context, tripId, startDateMillis)
         }
+
+        private fun scheduleNextDailyEngagement(context: Context) {
+            val preferences = context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+            if (!preferences.getBoolean("enabled", false) || !canPostNotifications(context)) {
+                return
+            }
+
+            val alarmManager = context.getSystemService(AlarmManager::class.java)
+            val triggerAtMillis = System.currentTimeMillis() + DAILY_INTERVAL_MILLIS
+            val alarm = dailyPendingIntent(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    alarm,
+                )
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, alarm)
+            }
+            preferences.edit().putBoolean("scheduled", true).apply()
+        }
+
+        private fun canPostNotifications(context: Context): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
 
         private fun dailyPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, TripReminderReceiver::class.java)
@@ -219,6 +266,68 @@ class TripReminderReceiver : BroadcastReceiver() {
                 .setAutoCancel(true)
             if (contentIntent != null) builder.setContentIntent(contentIntent)
             manager.notify(tripId * 10 + offset, builder.build())
+        }
+
+        private fun showDailyEngagement(context: Context) {
+            if (!canPostNotifications(context)) return
+
+            val preferences = context.getSharedPreferences(DAILY_PREFERENCES, Context.MODE_PRIVATE)
+            if (!preferences.getBoolean("enabled", false)) return
+            val messageIndex = preferences.getInt("messageIndex", 0) % engagementMessages.size
+            val body = engagementMessages[messageIndex]
+            preferences.edit().putInt("messageIndex", messageIndex + 1).apply()
+
+            val manager = context.getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        DAILY_CHANNEL_ID,
+                        "Inspirasi LokaLuxe",
+                        NotificationManager.IMPORTANCE_DEFAULT,
+                    ).apply {
+                        description = "Pengingat berkala untuk membuka LokaLuxe"
+                    },
+                )
+            }
+
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val contentIntent = launchIntent?.let {
+                PendingIntent.getActivity(
+                    context,
+                    DAILY_REQUEST_CODE,
+                    it,
+                    PendingIntent.FLAG_UPDATE_CURRENT or (if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    ) {
+                        PendingIntent.FLAG_IMMUTABLE
+                    } else {
+                        0
+                    }),
+                )
+            }
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(context, DAILY_CHANNEL_ID)
+            } else {
+                Notification.Builder(context).setPriority(Notification.PRIORITY_DEFAULT)
+            }
+            builder.setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Ada ide perjalanan buatmu")
+                .setContentText(body)
+                .setStyle(Notification.BigTextStyle().bigText(body))
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+
+            if (contentIntent != null) {
+                builder.setContentIntent(contentIntent)
+                builder.addAction(
+                    Notification.Action.Builder(
+                        android.R.drawable.ic_menu_view,
+                        "Buka LokaLuxe",
+                        contentIntent,
+                    ).build(),
+                )
+            }
+            manager.notify(DAILY_NOTIFICATION_ID, builder.build())
         }
 
     }

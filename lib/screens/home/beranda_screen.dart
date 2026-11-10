@@ -29,6 +29,8 @@ import '../voucher/voucher_screen.dart';
 import '../hotel/hotel_catalog_screen.dart';
 import '../wisata/wisata_catalog_screen.dart';
 import '../transportasi/transport_catalog_screen.dart';
+import '../concierge/lokabot_screen.dart';
+import 'floating_rafflesia_button.dart';
 
 class BerandaScreen extends StatefulWidget {
   final Function(int) onTabChange;
@@ -185,8 +187,10 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.warmCream,
-      body: SafeArea(
-        child: SingleChildScrollView(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
@@ -474,31 +478,46 @@ class _BerandaScreenState extends State<BerandaScreen> {
 
               // 5. Quick Feature Actions
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildQuickAction(
-                    icon: Icons.calculate_outlined,
-                    label: 'Budget Trip',
-                    color: AppColors.primaryGreen,
-                    onTap: _openBudgetPlanner,
+                  Expanded(
+                    child: _buildQuickAction(
+                      icon: Icons.calculate_outlined,
+                      label: 'Budget Trip',
+                      color: AppColors.primaryGreen,
+                      onTap: _openBudgetPlanner,
+                    ),
                   ),
-                  _buildQuickAction(
-                    icon: Icons.route_outlined,
-                    label: 'Itinerary',
-                    color: AppColors.accentGold,
-                    onTap: _openItinerary,
+                  Expanded(
+                    child: _buildQuickAction(
+                      icon: Icons.route_outlined,
+                      label: 'Itinerary',
+                      color: AppColors.accentGold,
+                      onTap: _openItinerary,
+                    ),
                   ),
-                  _buildQuickAction(
-                    icon: Icons.sports_esports_outlined,
-                    label: s.miniGame,
-                    color: AppColors.primaryGreen,
-                    onTap: () => _open(const MiniGameScreen()),
+                  Expanded(
+                    child: _buildQuickAction(
+                      icon: Icons.sports_esports_outlined,
+                      label: s.miniGame,
+                      color: AppColors.primaryGreen,
+                      onTap: () => _open(const MiniGameScreen()),
+                    ),
                   ),
-                  _buildQuickAction(
-                    icon: Icons.card_giftcard_outlined,
-                    label: s.voucher,
-                    color: AppColors.accentGold,
-                    onTap: () => _open(const VoucherScreen()),
+                  Expanded(
+                    child: _buildQuickAction(
+                      icon: Icons.card_giftcard_outlined,
+                      label: s.voucher,
+                      color: AppColors.accentGold,
+                      onTap: () => _open(const VoucherScreen()),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildQuickAction(
+                      icon: Icons.smart_toy_outlined,
+                      label: 'LokaBot',
+                      color: AppColors.primaryGreen,
+                      onTap: () => _open(const LokaBotScreen()),
+                    ),
                   ),
                 ],
               ),
@@ -564,18 +583,19 @@ class _BerandaScreenState extends State<BerandaScreen> {
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   itemCount: categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final isSelected = _selectedCategoryIndex == index;
                     return InkWell(
                       onTap: () {
                         setState(() => _selectedCategoryIndex = index);
-                        if (index == 0)
+                        if (index == 0) {
                           _open(const HotelCatalogScreen());
-                        else if (index == 1)
+                        } else if (index == 1) {
                           _open(const TransportCatalogScreen());
-                        else if (index == 2)
+                        } else if (index == 2) {
                           _openWisataCatalog();
+                        }
                       },
                       borderRadius: BorderRadius.circular(99),
                       child: Container(
@@ -685,12 +705,19 @@ class _BerandaScreenState extends State<BerandaScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 124),
             ],
           ),
         ),
       ),
-    );
+      const Positioned(
+        right: 18,
+        bottom: 18,
+        child: FloatingRafflesiaButton(),
+      ),
+    ],
+  ),
+);
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -769,6 +796,9 @@ class _BerandaScreenState extends State<BerandaScreen> {
         const SizedBox(height: 6),
         Text(
           label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 11,
             fontWeight: FontWeight.w600,

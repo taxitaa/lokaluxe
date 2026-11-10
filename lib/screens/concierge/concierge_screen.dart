@@ -24,11 +24,19 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _aiService = ConciergeAiService();
+
   final List<_ChatMessage> _messages = [];
+
   TripRequest _tripRequest = const TripRequest();
   bool _awaitingItineraryConfirmation = false;
   bool _collectingTripDetails = false;
   bool _isSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_aiService.warmUp());
+  }
 
   @override
   void dispose() {
@@ -37,17 +45,16 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_aiService.warmUp());
-  }
-
   Future<void> _sendMessage([String? textToSend]) async {
     final text = (textToSend ?? _messageController.text).trim();
     if (text.isEmpty || _isSending) return;
 
     _messageController.clear();
+
+    await _handleGeminiMessage(text);
+  }
+
+  Future<void> _handleGeminiMessage(String text) async {
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _isSending = true;
@@ -91,6 +98,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
             },
           )
           .toList();
+
       var reply = await _aiService.reply(conversation: conversation);
       if (_shouldOfferItinerary(text)) {
         reply =
@@ -100,7 +108,9 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
         _awaitingItineraryConfirmation = true;
       }
       if (!mounted) return;
-      setState(() => _messages.add(_ChatMessage(text: reply, isUser: false)));
+      setState(() {
+        _messages.add(_ChatMessage(text: reply, isUser: false));
+      });
     } catch (error) {
       if (!mounted) return;
       final message = error is StateError
@@ -278,11 +288,13 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
   @override
   Widget build(BuildContext context) {
     final strings = context.watch<LocalizationProvider>().strings;
-    final quickPrompts = [
-      strings.conciergePromptItinerary,
-      strings.conciergePromptBudget,
-      strings.conciergePromptAttractions,
+    final canPop = Navigator.of(context).canPop();
+    final geminiPrompts = const [
+      'Rekomendasi wisata Bali 3 hari',
+      'Estimasi budget liburan ke Labuan Bajo',
+      'Kuliner khas Yogyakarta yang wajib dicoba',
     ];
+
     return Scaffold(
       backgroundColor: AppColors.warmCream,
       appBar: AppBar(
@@ -296,6 +308,18 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
         flexibleSpace: const _ConciergeHeaderBackground(),
         title: Row(
           children: [
+            if (canPop) ...[
+              IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: AppColors.primaryGreen,
+                  size: 20,
+                ),
+                tooltip: 'Kembali',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(width: 4),
+            ],
             const _ConciergeAvatar(size: 58),
             const SizedBox(width: 9),
             Expanded(
@@ -350,10 +374,11 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Chat Message List
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 physics: const BouncingScrollPhysics(),
                 itemCount: _messages.length + (_isSending ? 1 : 0),
                 itemBuilder: (context, index) {
@@ -371,7 +396,8 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                 },
               ),
             ),
-            if (_messages.isEmpty) _buildQuickPrompts(quickPrompts),
+
+            if (_messages.isEmpty) _buildQuickPrompts(geminiPrompts),
             _buildComposer(),
           ],
         ),
@@ -388,7 +414,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
         itemCount: quickPrompts.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) => ActionChip(
-          avatar: const Icon(
+          avatar: Icon(
             Icons.auto_awesome_rounded,
             size: 14,
             color: AppColors.primaryGreen,
@@ -417,7 +443,6 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
   }
 
   Widget _buildComposer() {
-    final strings = context.read<LocalizationProvider>().strings;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       decoration: BoxDecoration(
@@ -454,7 +479,7 @@ class _ConciergeScreenState extends State<ConciergeScreen> {
                         color: AppColors.textDark,
                       ),
                       decoration: InputDecoration(
-                        hintText: strings.askTravel,
+                        hintText: 'Tanya seputar perjalananmu...',
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 14,
                           color: AppColors.textMuted,
@@ -529,7 +554,7 @@ class _MessageBubble extends StatelessWidget {
       ),
       padding: isUser
           ? const EdgeInsets.symmetric(horizontal: 17, vertical: 15)
-          : const EdgeInsets.fromLTRB(58, 14, 17, 15),
+          : const EdgeInsets.fromLTRB(16, 14, 17, 14),
       decoration: BoxDecoration(
         color: bubbleColor,
         borderRadius: BorderRadius.only(
@@ -539,13 +564,18 @@ class _MessageBubble extends StatelessWidget {
           bottomRight: Radius.circular(isUser ? 8 : 28),
         ),
       ),
-      child: _FormattedChatText(
-        text: message.text,
-        color: isUser
-            ? Colors.white
-            : message.isError
-            ? AppColors.errorRed
-            : const Color(0xFF333333),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _FormattedChatText(
+            text: message.text,
+            color: isUser
+                ? Colors.white
+                : message.isError
+                ? AppColors.errorRed
+                : const Color(0xFF333333),
+          ),
+        ],
       ),
     );
 
@@ -557,37 +587,31 @@ class _MessageBubble extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.82,
+                  maxWidth: MediaQuery.of(context).size.width * 0.88,
                 ),
-                child: Stack(
-                  clipBehavior: Clip.none,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 28),
-                      child: bubble,
-                    ),
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          _ConciergeAvatar(
-                            size: 64,
-                            closedEyes: avatarUsesClosedEyes,
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _ConciergeAvatar(
+                          size: 42,
+                          closedEyes: avatarUsesClosedEyes,
+                        ),
+                        Positioned(
+                          top: -2,
+                          right: -4,
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 13,
+                            color: AppColors.primaryGreen,
                           ),
-                          const Positioned(
-                            top: -2,
-                            right: -8,
-                            child: Icon(
-                              Icons.auto_awesome_rounded,
-                              size: 15,
-                              color: AppColors.primaryGreen,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(child: bubble),
                   ],
                 ),
               ),
@@ -870,26 +894,91 @@ class _FormattedChatText extends StatelessWidget {
   }
 }
 
-class _TypingIndicator extends StatelessWidget {
+class _TypingIndicator extends StatefulWidget {
   const _TypingIndicator();
+
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0E9E3),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Text(
-          'AI sedang menyiapkan jawaban...',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const _ConciergeAvatar(size: 38),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0E9E3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Gemini sedang berpikir',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(3, (index) {
+                          final offset = ((_controller.value * 3) - index) % 3;
+                          final double opacity = (offset >= 0 && offset < 1.5)
+                              ? 1.0
+                              : 0.35;
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryGreen.withValues(
+                                alpha: opacity,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          );
+                        }),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

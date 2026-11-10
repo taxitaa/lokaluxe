@@ -17,7 +17,7 @@ import 'screens/splash/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // WAJIB untuk desktop (Windows/Linux/macOS): aktifkan SQLite FFI
+  // WAJIB untuk desktop (Windows): aktifkan SQLite FFI
   initializeDatabase();
 
   SystemChrome.setSystemUIOverlayStyle(

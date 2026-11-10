@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart';
+
 import 'database_initializer.dart';
+
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+
 import '../models/expense_model.dart';
 import '../models/hotel_model.dart';
 import '../models/transport_model.dart';
@@ -10,6 +13,7 @@ import '../models/trip_model.dart';
 import '../models/trip_itinerary_day_model.dart';
 import '../models/user_model.dart';
 import '../security/password_hasher.dart';
+import '../services/session_service.dart';
 import 'hotel_seed_data.dart';
 import 'transport_seed_data.dart';
 
@@ -37,7 +41,7 @@ class DBHelper {
 
     final db = await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         // 1. Table Users dengan Enkripsi PBKDF2 / SHA-256 & Salt
         await _createUsersTable(db);
@@ -59,7 +63,8 @@ class DBHelper {
             hotelAllocation REAL,
             culinaryAllocation REAL,
             activityAllocation REAL,
-            status TEXT
+            status TEXT,
+            userId INTEGER NOT NULL
           )
         ''');
 
@@ -72,7 +77,8 @@ class DBHelper {
             amount REAL,
             date TEXT,
             isIncome INTEGER,
-            tripId INTEGER
+            tripId INTEGER,
+            userId INTEGER NOT NULL
           )
         ''');
 
@@ -109,7 +115,9 @@ class DBHelper {
             final hasSalt = tableInfo.any((c) => c['name'] == 'salt');
             if (!hasSalt) {
               await db.execute('ALTER TABLE users ADD COLUMN salt TEXT');
-              await db.execute('ALTER TABLE users ADD COLUMN passwordHash TEXT');
+              await db.execute(
+                'ALTER TABLE users ADD COLUMN passwordHash TEXT',
+              );
               await db.execute('ALTER TABLE users ADD COLUMN createdAt TEXT');
             }
 
@@ -142,8 +150,9 @@ class DBHelper {
           // Migrasi: tambah kolom biometricEnabled ke tabel users
           try {
             final tableInfo = await db.rawQuery('PRAGMA table_info(users)');
-            final hasBiometric =
-                tableInfo.any((c) => c['name'] == 'biometricEnabled');
+            final hasBiometric = tableInfo.any(
+              (c) => c['name'] == 'biometricEnabled',
+            );
             if (!hasBiometric) {
               await db.execute(
                 'ALTER TABLE users ADD COLUMN biometricEnabled INTEGER DEFAULT 0',
@@ -156,19 +165,24 @@ class DBHelper {
           } catch (_) {}
         }
         if (oldVersion < 6) {
-          final tripColumns =
-              await db.rawQuery('PRAGMA table_info(trips)');
-          final tripColumnNames =
-              tripColumns.map((column) => column['name']).toSet();
+          final tripColumns = await db.rawQuery('PRAGMA table_info(trips)');
+          final tripColumnNames = tripColumns
+              .map((column) => column['name'])
+              .toSet();
           if (!tripColumnNames.contains('durationDays')) {
-            await db.execute('ALTER TABLE trips ADD COLUMN durationDays INTEGER');
+            await db.execute(
+              'ALTER TABLE trips ADD COLUMN durationDays INTEGER',
+            );
           }
           if (!tripColumnNames.contains('travelerCount')) {
-            await db.execute('ALTER TABLE trips ADD COLUMN travelerCount INTEGER');
+            await db.execute(
+              'ALTER TABLE trips ADD COLUMN travelerCount INTEGER',
+            );
           }
 
-          final expenseColumns =
-              await db.rawQuery('PRAGMA table_info(expenses)');
+          final expenseColumns = await db.rawQuery(
+            'PRAGMA table_info(expenses)',
+          );
           if (!expenseColumns.any((column) => column['name'] == 'tripId')) {
             await db.execute('ALTER TABLE expenses ADD COLUMN tripId INTEGER');
           }
@@ -190,7 +204,8 @@ class DBHelper {
           );
           await db.delete(
             'expenses',
-            where: '(title = ? AND category = ? AND amount = ?) OR '
+            where:
+                '(title = ? AND category = ? AND amount = ?) OR '
                 '(title = ? AND category = ? AND amount = ?)',
             whereArgs: [
               'Kopi Klotok & Pisang Goreng',
@@ -205,6 +220,9 @@ class DBHelper {
         if (oldVersion < 7) {
           await _createTripItineraryDaysTable(db);
         }
+        if (oldVersion < 8) {
+          await _migrateTripOwnership(db);
+        }
       },
     );
 
@@ -217,7 +235,42 @@ class DBHelper {
 
     // Buat & isi tabel transportasi (hanya sekali)
     await _ensureTransports(db);
+    await _ensureTripOwnershipColumns(db);
     return db;
+  }
+
+  static Future<void> _ensureTripOwnershipColumns(DatabaseExecutor db) async {
+    final tripColumns = await db.rawQuery('PRAGMA table_info(trips)');
+    if (!tripColumns.any((column) => column['name'] == 'userId')) {
+      await db.execute('ALTER TABLE trips ADD COLUMN userId INTEGER');
+    }
+
+    final expenseColumns = await db.rawQuery('PRAGMA table_info(expenses)');
+    if (!expenseColumns.any((column) => column['name'] == 'userId')) {
+      await db.execute('ALTER TABLE expenses ADD COLUMN userId INTEGER');
+    }
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_trips_user_status ON trips(userId, status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(userId)',
+    );
+  }
+
+  static Future<void> _migrateTripOwnership(Database db) async {
+    await _ensureTripOwnershipColumns(db);
+    // Legacy rows have no reliable owner, so keep them unassigned rather than
+    // exposing one account's old data to whichever account logs in next.
+  }
+
+  static Future<int> _requireCurrentUserId() async {
+    final session = await SessionService.getSessionData();
+    final userId = session?.userId;
+    if (userId == null || userId <= 0) {
+      throw StateError('Akun tidak aktif. Silakan masuk kembali.');
+    }
+    return userId;
   }
 
   // --- TABEL USERS & SEED ---
@@ -245,13 +298,19 @@ class DBHelper {
       final info = await db.rawQuery('PRAGMA table_info(users)');
       final colNames = info.map((c) => c['name'].toString()).toSet();
       if (!colNames.contains('biometricEnabled')) {
-        await db.execute('ALTER TABLE users ADD COLUMN biometricEnabled INTEGER DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN biometricEnabled INTEGER DEFAULT 0',
+        );
       }
       if (!colNames.contains('fingerprintEnabled')) {
-        await db.execute('ALTER TABLE users ADD COLUMN fingerprintEnabled INTEGER DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN fingerprintEnabled INTEGER DEFAULT 0',
+        );
       }
       if (!colNames.contains('faceIdEnabled')) {
-        await db.execute('ALTER TABLE users ADD COLUMN faceIdEnabled INTEGER DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN faceIdEnabled INTEGER DEFAULT 0',
+        );
       }
       if (!colNames.contains('securityPin')) {
         await db.execute('ALTER TABLE users ADD COLUMN securityPin TEXT');
@@ -260,7 +319,8 @@ class DBHelper {
   }
 
   static Future<void> _seedDefaultUser(Database db) async {
-    final count = Sqflite.firstIntValue(
+    final count =
+        Sqflite.firstIntValue(
           await db.rawQuery(
             "SELECT COUNT(*) FROM users WHERE LOWER(email) = 'amalia@localluxe.id'",
           ),
@@ -308,11 +368,14 @@ class DBHelper {
     }
 
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_wisata_provinsi ON wisata(provinsi)');
+      'CREATE INDEX IF NOT EXISTS idx_wisata_provinsi ON wisata(provinsi)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_wisata_kategori ON wisata(kategori)');
+      'CREATE INDEX IF NOT EXISTS idx_wisata_kategori ON wisata(kategori)',
+    );
 
-    final count = Sqflite.firstIntValue(
+    final count =
+        Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM wisata'),
         ) ??
         0;
@@ -323,7 +386,10 @@ class DBHelper {
 
     // 1. Salin file sqlite dari assets ke penyimpanan database
     final bytes = await rootBundle.load('assets/db/lokaluxe_wisata.sqlite');
-    final uint8List = bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+    final uint8List = bytes.buffer.asUint8List(
+      bytes.offsetInBytes,
+      bytes.lengthInBytes,
+    );
     final String tmpPath;
     if (kIsWeb) {
       tmpPath = 'wisata_source.db';
@@ -414,7 +480,8 @@ class DBHelper {
   }
 
   static Future<void> _seedHotels(Database db) async {
-    final count = Sqflite.firstIntValue(
+    final count =
+        Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM hotels'),
         ) ??
         0;
@@ -444,11 +511,14 @@ class DBHelper {
       )
     ''');
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_transports_type ON transports(type)');
+      'CREATE INDEX IF NOT EXISTS idx_transports_type ON transports(type)',
+    );
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_transports_province ON transports(province)');
+      'CREATE INDEX IF NOT EXISTS idx_transports_province ON transports(province)',
+    );
 
-    final count = Sqflite.firstIntValue(
+    final count =
+        Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM transports'),
         ) ??
         0;
@@ -596,7 +666,9 @@ class DBHelper {
   }
 
   /// Mengambil pengaturan biometrik user lengkap
-  static Future<Map<String, dynamic>> getUserSecuritySettings(int userId) async {
+  static Future<Map<String, dynamic>> getUserSecuritySettings(
+    int userId,
+  ) async {
     final db = await database;
     final res = await db.query(
       'users',
@@ -641,14 +713,15 @@ class DBHelper {
   // --- TRIP & BUDGET OPERATIONS ---
   static Future<int> saveTrip(TripModel trip) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     return db.transaction((txn) async {
       await txn.update(
         'trips',
         {'status': 'archived'},
-        where: 'status = ?',
-        whereArgs: ['active'],
+        where: 'status = ? AND userId = ?',
+        whereArgs: ['active', userId],
       );
-      return txn.insert('trips', trip.toMap());
+      return txn.insert('trips', {...trip.toMap(), 'userId': userId});
     });
   }
 
@@ -657,14 +730,18 @@ class DBHelper {
     required List<TripItineraryDay> days,
   }) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     return db.transaction((txn) async {
       await txn.update(
         'trips',
         {'status': 'archived'},
-        where: 'status = ?',
-        whereArgs: ['active'],
+        where: 'status = ? AND userId = ?',
+        whereArgs: ['active', userId],
       );
-      final tripId = await txn.insert('trips', trip.toMap());
+      final tripId = await txn.insert('trips', {
+        ...trip.toMap(),
+        'userId': userId,
+      });
       for (final day in days) {
         await txn.insert('trip_itinerary_days', {
           ...day.toMap(),
@@ -692,9 +769,7 @@ class DBHelper {
     ''');
   }
 
-  static Future<void> _createTripItineraryDaysTable(
-    DatabaseExecutor db,
-  ) async {
+  static Future<void> _createTripItineraryDaysTable(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS trip_itinerary_days (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -723,10 +798,11 @@ class DBHelper {
 
   static Future<TripModel?> getActiveTrip() async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     final res = await db.query(
       'trips',
-      where: 'status = ?',
-      whereArgs: ['active'],
+      where: 'status = ? AND userId = ?',
+      whereArgs: ['active', userId],
       orderBy: 'id DESC',
       limit: 1,
     );
@@ -738,9 +814,11 @@ class DBHelper {
 
   static Future<int> getCompletedTripCount() async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     return Sqflite.firstIntValue(
           await db.rawQuery(
-            "SELECT COUNT(*) FROM trips WHERE status IN ('archived', 'completed')",
+            "SELECT COUNT(*) FROM trips WHERE status IN ('archived', 'completed') AND userId = ?",
+            [userId],
           ),
         ) ??
         0;
@@ -754,6 +832,7 @@ class DBHelper {
     required double activityAllocation,
   }) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     final trip = await getActiveTrip();
     final budgetFields = {
       'targetBudget': targetBudget,
@@ -774,6 +853,7 @@ class DBHelper {
         'currency': 'IDR',
         ...budgetFields,
         'status': 'active',
+        'userId': userId,
       });
       return;
     }
@@ -784,8 +864,8 @@ class DBHelper {
     final updatedRows = await db.update(
       'trips',
       budgetFields,
-      where: 'id = ?',
-      whereArgs: [trip.id],
+      where: 'id = ? AND userId = ?',
+      whereArgs: [trip.id, userId],
     );
     if (updatedRows == 0) {
       throw StateError('The active trip budget could not be updated.');
@@ -799,6 +879,7 @@ class DBHelper {
     required int travelerCount,
   }) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     final trip = await getActiveTrip();
     if (trip?.id == null) {
       throw StateError('Create and save a trip budget before trip details.');
@@ -813,8 +894,8 @@ class DBHelper {
         'durationDays': durationDays,
         'travelerCount': travelerCount,
       },
-      where: 'id = ?',
-      whereArgs: [trip!.id],
+      where: 'id = ? AND userId = ?',
+      whereArgs: [trip!.id, userId],
     );
     if (updatedRows == 0) {
       throw StateError('Trip details could not be saved.');
@@ -866,11 +947,12 @@ class DBHelper {
     required DateTime plannedDate,
   }) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     return db.transaction((txn) async {
       final trips = await txn.query(
         'trips',
-        where: 'status = ?',
-        whereArgs: ['active'],
+        where: 'status = ? AND userId = ?',
+        whereArgs: ['active', userId],
         orderBy: 'id DESC',
         limit: 1,
       );
@@ -926,27 +1008,36 @@ class DBHelper {
   // --- EXPENSE OPERATIONS ---
   static Future<int> insertExpense(ExpenseModel expense) async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     final trip = await getActiveTrip();
     return await db.insert('expenses', {
       ...expense.toMap(),
       'tripId': trip?.id,
+      'userId': userId,
     });
   }
 
   static Future<List<ExpenseModel>> getExpenses() async {
     final db = await database;
-    final res = await db.query('expenses', orderBy: 'id DESC');
+    final userId = await _requireCurrentUserId();
+    final res = await db.query(
+      'expenses',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'id DESC',
+    );
     return res.map((m) => ExpenseModel.fromMap(m)).toList();
   }
 
   static Future<double> getTotalExpenses() async {
     final db = await database;
+    final userId = await _requireCurrentUserId();
     final trip = await getActiveTrip();
     if (trip?.id == null) return 0.0;
     final expenses = await db.rawQuery(
       'SELECT COALESCE(SUM(amount), 0) AS total FROM expenses '
-      'WHERE tripId = ? AND isIncome = 0',
-      [trip!.id],
+      'WHERE tripId = ? AND userId = ? AND isIncome = 0',
+      [trip!.id, userId],
     );
     final items = await db.rawQuery(
       'SELECT COALESCE(SUM(totalCost), 0) AS total FROM trip_items '
@@ -1007,7 +1098,10 @@ class DBHelper {
 
   // --- FEEDBACK (SARAN & KESAN) ---
   static Future<int> insertFeedback(
-      String userEmail, int rating, String comment) async {
+    String userEmail,
+    int rating,
+    String comment,
+  ) async {
     final db = await database;
     return await db.insert('feedback', {
       'userEmail': userEmail,
